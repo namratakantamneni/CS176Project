@@ -29,7 +29,27 @@ def get_suffix_array(s):
     >>> get_suffix_array('GATAGACA$')
     [8, 7, 5, 3, 1, 6, 4, 0, 2]
     """
-    pass
+
+    char_order = {'$': 0, 'A': 1, 'C': 2, 'G': 3, 'T': 4}
+
+    def radix_sort(indices, j):
+        """
+        Input:
+            indices: a list of indices of s
+            j: the length of the common prefix for all indices
+        Output: lexicographically sorted list of indices
+        """
+        if len(indices) <= 1:
+            return indices
+        
+        result = [[], [], [], [], []]
+
+        for i in indices:
+            result[char_order[s[i+j]]].append(i)
+        
+        return result[0] + [index for i in range(1,5) for index in radix_sort(result[i], j+1)]
+
+    return radix_sort(list(range(len(s))), 0)
 
 def get_bwt(s, sa):
     """
