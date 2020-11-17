@@ -13,6 +13,7 @@
 
 import sys # DO NOT EDIT THIS
 from shared import *
+import numpy as np
 
 ALPHABET = [TERMINATOR] + BASES
 
@@ -30,26 +31,48 @@ def get_suffix_array(s):
     [8, 7, 5, 3, 1, 6, 4, 0, 2]
     """
 
-    char_order = {'$': 0, 'A': 1, 'C': 2, 'G': 3, 'T': 4}
+    # sa: the suffix array.
+    sa = np.arange(len(s), dtype='uint32')
 
-    def radix_sort(indices, j):
-        """
-        Input:
-            indices: a list of indices of s
-            j: the length of the common prefix for all indices
-        Output: lexicographically sorted list of indices
-        """
-        if len(indices) <= 1:
-            return indices
+    # buckets: a dict storing the results for one layer of counting sort.
+    # format: {C: (indices where C is the next char, # of valid indices) ... }
+    buckets = {'$': [np.empty(1, dtype='uint32'), 0], 'A': [np.empty(len(s)-1, dtype='uint32'), 0], 'C': [np.empty(len(s)-1, dtype='uint32'), 0], \
+               'G': [np.empty(len(s)-1, dtype='uint32'), 0], 'T': [np.empty(len(s)-1, dtype='uint32'), 0]}
+
+    # ranges: index ranges in 'sa' which are not fully sorted.
+    # format: [start index (inclusive), end index (exclusive), # of valid ranges]
+    ranges = [np.empty(len(s), dtype='uint32'), np.empty(len(s), dtype='uint32'), 1] 
+    ranges[0][0], ranges[1][0] = 0, len(s)
+
+    for d in range(len(s)):
+
+        rs_ = [np.empty(len(s), dtype='uint32'), np.empty(len(s), dtype='uint32'), 0] # next set of ranges
+
+        for r in range(ranges[2]):
+
+            for c in ALPHABET:
+                buckets[c][1] = 0
+
+            for i in range(ranges[0][r], ranges[1][r]):
+                b = buckets[s[sa[i]+d]]
+                b[0][b[1]], b[1] = sa[i], b[1]+1
+            
+            j = ranges[0][r]
+            
+            for c in ALPHABET:
+
+                b = buckets[c]
+                sa[j:j+b[1]] = b[0][0:b[1]]
+
+                if b[1] > 1:
+                    rs_[0][rs_[2]], rs_[1][rs_[2]] = j, j+b[1]
+                    rs_[2] += 1
+                
+                j += b[1]
         
-        result = [[], [], [], [], []]
-
-        for i in indices:
-            result[char_order[s[i+j]]].append(i)
-        
-        return result[0] + [index for i in range(1,5) for index in radix_sort(result[i], j+1)]
-
-    return radix_sort(list(range(len(s))), 0)
+        ranges = rs_
+    
+    return list(sa)
 
 def get_bwt(s, sa):
     """
@@ -60,15 +83,30 @@ def get_bwt(s, sa):
     Output:
         L: BWT of s as a string
     """
-    pass
+    bwt_arr = []
+
+    for elem in sa:  
+        bwt_arr.append(s[elem-1])
+
+    bwt_str = ''.join(bwt_arr)
+
+    return bwt_str
 
 def get_F(L):
     """
     Input: L = get_bwt(s)
-
     Output: F, first column in Pi_sorted
     """
-    pass
+    counts = {c: 0 for c in ALPHABET}
+
+    for c in L:
+      counts[c] += 1
+    
+    F = ''
+    for c in ALPHABET:
+      F += counts[c] * c
+    
+    return F
 
 def get_M(F):
     """
@@ -77,7 +115,23 @@ def get_M(F):
 
     If a character "c" does not exist in F, you may set M[c] = -1
     """
-    pass
+
+    M = {c: -1 for c in ALPHABET}
+
+    chars_left = 5
+
+    for i in range(len(F)):
+        
+        c = F[i]
+
+        if M[c] == -1:
+            M[c] = i
+            chars_left -= 1
+        
+        if not chars_left:
+          break
+
+    return M
 
 def get_occ(L):
     """
@@ -85,7 +139,18 @@ def get_occ(L):
     string character to a list of integers. If c is a string character and i is an integer, then OCC[c][i] gives
     the number of occurrences of character "c" in the bwt string up to and including index i
     """
-    pass
+    OCC = dict()
+
+    for char in L:
+        if not char in OCC.keys():
+            OCC[char] = [0]
+    OCC[L[0]][0] = 1 # assume len(L) > 0
+    
+    for i in range(1, len(L)):
+        for key in OCC.keys():
+            OCC[key].append(OCC[key][i-1] + (1 if L[i] == key else 0))
+    
+    return OCC
 
 def exact_suffix_matches(p, M, occ):
     """
@@ -131,12 +196,34 @@ def exact_suffix_matches(p, M, occ):
     >>> exact_suffix_matches('AA', M, occ)
     ((1, 11), 1)
     """
-    pass
+    if not p[-1] in M.keys():
+      return (None, 0)
+    
+    sp = M[p[-1]]
+    ep = sp + occ[p[-1]][-1] - 1
+    range, length = (sp, ep+1), 1
+
+    while length < len(p):
+      c = p[-length - 1]
+      if not c in M.keys():
+        break
+
+      sp = M[c] + occ[c][max(0, sp-1)]
+      ep = M[c] + occ[c][ep] - 1
+
+      if sp > ep:
+        break
+
+      range = (sp, ep+1)
+      length += 1
+
+    return (range, length)
 
 MIN_INTRON_SIZE = 20
 MAX_INTRON_SIZE = 10000
 
 class Aligner:
+
     def __init__(self, genome_sequence, known_genes):
         """
         Initializes the aligner. Do all time intensive set up here. i.e. build suffix array.
@@ -147,9 +234,41 @@ class Aligner:
 
         Time limit: 500 seconds maximum on the provided data. Note that our server is probably faster than your machine, 
                     so don't stress if you are close. Server is 1.25 times faster than the i7 CPU on my computer
-
         """
-        pass
+
+        s = genome_sequence + '$'
+        sa = get_suffix_array(s)
+        L = get_bwt(s, sa)
+        F = get_F(L)
+        M = get_M(F)
+        occ = get_occ(L)
+
+        self.genome = {'s': s, 'sa': sa, 'L': L, 'F': F, 'M': M, 'occ': occ} # no introns/exons
+
+        self.genes = dict() # dict: {gene_id -> dict: {isoform_id -> dict: {'s': string, 'sa': array, 'L': string, 'F': string, 'M': dict, 'occ': dict}}}
+
+        for gene in known_genes:
+
+            gene_data = dict()
+
+            for isoform in gene.isoforms:
+
+                isoform_data = dict()
+
+                isoform_data['s'] = ''
+                for exon in isoform.exons:
+                    isoform_data['s'] += genome_sequence[exon.start:exon.end]
+                isoform_data['s'] += '$'
+
+                isoform_data['sa']  = get_suffix_array(isoform_data['s'])
+                isoform_data['L']   = get_bwt(isoform_data['s'], isoform_data['sa'])
+                isoform_data['F']   = get_F(isoform_data['L'])
+                isoform_data['M']   = get_M(isoform_data['F'])
+                isoform_data['occ'] = get_occ(isoform_data['L'])
+
+                gene_data[isoform.isoform_id] = isoform_data
+
+            self.genes[gene.gene_id] = gene_data
 
     def align(self, read_sequence):
         """
@@ -168,4 +287,235 @@ class Aligner:
 
         Time limit: 0.5 seconds per read on average on the provided data.
         """
-        pass
+
+        def exact_suffix_matches_indexed(p, M, occ, ep, sp, d):
+            """
+            Exact suffix matches given starting sp, ep.
+            """
+
+            range, length = (sp, ep+1), 0
+
+            while length < len(p):
+
+                c = p[-length - 1]
+
+                if not c in M.keys():
+                    break
+
+                sp = M[c] + occ[c][max(0, sp-1)]
+                ep = M[c] + occ[c][ep] - 1
+
+                if sp > ep:
+                    break
+
+                range = (sp, ep+1)
+                length += 1
+                
+            return (range, length + d)
+
+        # Can find all max values from the list but we should determine whether the performance really needs to be improved first.
+        def one_sub_suffix_matches(p, M, occ):
+            """
+            Suffix matches with up to one substitution.
+            """
+
+            chars = ['A', 'C', 'G', 'T']
+
+            if not p[-1] in M.keys():
+                return (None, 0)
+            
+            sp = M[p[-1]]
+            ep = sp + occ[p[-1]][-1] - 1
+            range, length = (sp, ep+1), 1
+
+            m_len = lambda x: x[0][1]
+            best = max([(exact_suffix_matches(p[:-1] + sub, M, occ), (len(p)-1, sub)) for sub in chars if sub != p[-1]], key=m_len)
+
+            while length < len(p):
+
+                i = len(p) - length - 1
+                c = p[i]
+
+                best_sub = max([(exact_suffix_matches_indexed(p[:i] + sub, M, occ, ep, sp, length), (i, sub)) for sub in chars if sub != c], key=m_len)
+                best = best_sub if m_len(best_sub) > m_len(best) else best
+
+                if not c in M.keys():
+                    break
+
+                sp = M[c] + occ[c][max(0, sp-1)]
+                ep = M[c] + occ[c][ep] - 1
+
+                if sp > ep:
+                    break
+
+                range = (sp, ep+1)
+                length += 1
+            
+            return best if m_len(best) > length + 1 else ((range, length), None) # removing the "+1" will allow extensions by one character
+
+        def bowtie_1(p, M, occ):
+            """
+            Returns an alignment of a query string p in the string represented by M, occ, with up to MAX_SUBS mismatches.
+            Only returns alignments that do not terminate in mismatches (i.e. will not extend an alignment by only one
+            character in an iteration).
+
+            Input:
+                p: the pattern string
+                M, occ: buckets and repeats information used by sp, ep
+
+            Output: a tuple (range, length)
+                range: a tuple (start inclusive, end exclusive) of the indices in sa that contains
+                    the longest suffix of p as a prefix. range=None if no indices matches any suffix of p
+                length: length of the longest suffix of p found in s. length=0 if no indices matches any suffix of p
+            """
+            
+            MAX_SUBS = 6        # We should do some thinking, this can probably be smaller.
+            MAX_BACKTRACKS = 50 # Testing necessary
+
+            # Greedy implementation which runs for MAX_SUBS iterations, choosing the best substitution per iteration.
+            best_align, subs = None, {}
+
+            while len(subs) < MAX_SUBS:
+
+                one_sub = one_sub_suffix_matches(p, M, occ)
+                
+                best_align = one_sub[0]
+                
+                if not one_sub[1]:
+                  break
+                
+                i, c = one_sub[1]
+
+                subs[i] = c
+                p = p[:i] + c + p[i+1:]
+
+            return best_align, subs
+
+        def diff_k(s_1, s_2, i_1, i_2, n, k):
+            """
+            Returns the pairwise difference of the first n characters of s_1 and s_2 starting at indices i_1 and i_2, respectively,
+            up to a difference of k, and otherwise returns a number higher than k.
+            """
+
+            diff = 0
+
+            for i in range(n):
+                if s_1[i_1+i] == s_2[i_2+i]:
+                    diff += 1
+                if diff > k:
+                    break
+            
+            return diff
+
+        def bowtie_2(p):
+            """
+            Returns an alignment of a query string p to the genome.
+
+            Input:
+                p: the pattern string
+
+            Output: a tuple (gene_id, isoform_id, index)
+                gene_id: id of the gene with best alignment to p
+                isoform_id: id of the isoform with best alignment to p
+                index: start index in the isoform
+            """
+            
+            MAX_SUBS = 6
+
+            SEED_LEN = 16
+            SEED_GAP = 10
+
+            seeds = [p[i:i+SEED_LEN] for i in range(0, len(p), SEED_GAP)]
+
+            # Priority 1
+            hits = dict()
+
+            for gene in self.genes.items():
+
+                gene_hits = dict()
+                
+                for iso in gene[1].items():
+
+                    iso_hits = dict()
+
+                    sa_ranges = [bowtie_1(seed, iso[1]['M'], iso[1]['occ']) for seed in seeds]
+                    
+                    # ex. sa_range: (((3, 4), 8), {10: 'C', 6: 'C'})
+                    for i in range(len(sa_ranges)):
+
+                        sa_range_i, sa_range_j = sa_ranges[i][0][0][0], sa_ranges[i][0][0][1]
+                        sa_range_len = sa_ranges[i][0][1]
+
+                        s_hits = [iso[1]['sa'][j] + sa_range_len - SEED_LEN - i * SEED_GAP for j in range(sa_range_i, sa_range_j)]
+                        s_hits = filter(s_hits, lambda x: x <= len(iso['s']) - len(p)) # ensure the whole length of hit is valid
+
+                        for hit in s_hits:
+                            iso_hits[hit] = iso_hits[hit] + 1 if hit in iso_hits.keys() else 1
+                        
+                    gene_hits[iso[0]] = {item[1]: item for item in iso_hits.items()}
+                
+                hits[gene[0]] = gene_hits
+            
+            best_align = (None, None, 0)
+            least_subs = MAX_SUBS + 1
+                    
+            for n in range(len(seeds) - 1, 1, -1): # check starting indices with 2 or more hits
+
+                changed = False # can remove this condition to speed up (remove bottom layer)
+
+                for gene in hits.items():
+
+                    for iso in gene[1].items():
+
+                        for i in iso[1][n]:
+
+                            iso_s = self.genes[gene[0]][iso[0]]['s']
+                            subs = diff_k(p, iso_s, 0, i, len(p), MAX_SUBS)
+
+                            if subs < least_subs:
+                                best_align = (gene[0], iso[0], i)
+                                least_subs = subs
+                                changed = True
+                            
+                            if subs == 0:
+                                break
+                
+                if not changed and best_align[0] != None:
+                    break
+
+            if best_align[0] != None:
+                return best_align
+
+                    
+            # Priority 2
+
+            return None # TODO
+
+        # Priority 1: Align to known isoform with 6 or less mismatches
+        # 1. Splice query into 5 seeds of length 16
+        # 2. Find all the "transcriptomes" by splicing together the exons given by the Gene object
+        # 3. For each of the transcriptomes:
+        #     3.1. Call bowtie_1 on each of the seeds for the transcriptome
+        #     3.2. Goal 1: find 5 sequential seeds with offset 10
+        #     3.3. Goal 2: find 2/3/4 sequential seeds, then infer where the remaining seeds are
+        #     3.4. Check pairwise value of each of these seeds via direct character comparison and return best
+        #
+        # Priority 2: Align to unknown isoforms
+        # 1. Basically the same as the other one, but if there are 2/3/4 sequential seeds there may be introns in between.
+        # 2. Determine gap length and then use pairwise character comparison to determine where the "intron" should be.
+
+        def genome_read(alignment):
+          """
+          Converts an alignment to (start index, end index) tuples in the genome
+
+          Input: a tuple (gene_id, isoform_id, i)
+              gene_id: id of the gene with best alignment to p
+              isoform_id: id of the isoform with best alignment to p
+              i: start index in the isoform
+          Output:
+             EDIT
+
+          """
+          
+        alignment = bowtie_2(read_sequence)
+        return genome_read(alignment) if alignment[0] != None else []
