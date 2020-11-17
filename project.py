@@ -14,6 +14,7 @@
 import sys # DO NOT EDIT THIS
 from shared import *
 import numpy as np
+import time
 
 ALPHABET = [TERMINATOR] + BASES
 
@@ -48,14 +49,27 @@ def get_suffix_array(s):
 
         rs_ = [np.empty(len(s), dtype='uint32'), np.empty(len(s), dtype='uint32'), 0] # next set of ranges
 
+        sa_inc = sa + d
+
         for r in range(ranges[2]):
 
             for c in ALPHABET:
                 buckets[c][1] = 0
 
+            time1, time2 = 0, 0
+
             for i in range(ranges[0][r], ranges[1][r]):
-                b = buckets[s[sa[i]+d]]
+                timea = time.time()
+                char = s[sa_inc[i]]
+                timeb = time.time()
+                b = buckets[char]
+                timec = time.time()
                 b[0][b[1]], b[1] = sa[i], b[1]+1
+
+                time1 += timeb - timea
+                time2 += timec - timeb
+
+            print(d, time1, time2)
             
             j = ranges[0][r]
             
