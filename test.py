@@ -31,16 +31,19 @@ for data in exon_data:
     isoform_id, start, end = data[1], int(data[2]), int(data[3])
     exon = Exon(isoform_id, start, end)
     known_exons[exon.id] = exon
+    print(time.time())
 
 for data in isoform_data:
     isoform_id, exons = data[1], [known_exons[exon_id] for exon_id in data[2:]]
     isoform = Isoform(isoform_id, exons)
     known_isoforms[isoform.id] = isoform
+    print(time.time())
 
 for data in gene_data:
     gene_id, isoforms = data[1], [known_isoforms[isoform_id] for isoform_id in data[2:]]
     gene = Gene(gene_id, isoforms)
     known_genes.add(gene)
+    print(time.time())
 
 genes_file.close()
 
