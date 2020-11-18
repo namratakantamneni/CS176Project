@@ -26,14 +26,11 @@ for line in genes_file.readlines():
         exon_data.append(data)
 
 known_genes, known_isoforms, known_exons = set(), dict(), dict()
-x = 0
 
 for data in exon_data:
     isoform_id, start, end = data[1], int(data[2]), int(data[3])
     exon = Exon(isoform_id, start, end)
     known_exons[exon.id] = exon
-    print(x)
-    x = x+1
 
 for data in isoform_data:
     isoform_id, exons = data[1], [known_exons[exon_id] for exon_id in data[2:]]
