@@ -1,13 +1,16 @@
 from project import *
 import time
 import re
+import pickle
+
+# Parsing
 
 genome_file = open('genome.fa', 'r')
 genome = genome_file.readlines()[1][:-1]
 genome_file.close()
 
 reads_file = open('reads.fa', 'r')
-reads = reads_file.readlines()[1::2][:-1]
+reads = [read[:-1] for read in reads_file.readlines()[1::2]]
 reads_file.close()
 
 genes_file = open('genes.tab', 'r')
@@ -44,10 +47,61 @@ for data in gene_data:
 
 genes_file.close()
 
-start = time.time()
+# Tests
+# Pickles used to store suffix arrays only
 
-aligner = Aligner(genome, known_genes)
+GENOME_SA_FILENAME = 'genome_sa.txt'
 
-end = time.time()
+def test_init():
 
-print(end - start)
+    start_init = time.time()
+
+    aligner = Aligner(genome, known_genes)
+
+    end_init = time.time()
+
+    print('init:', end_init - start_init)
+
+    np.savetxt(GENOME_SA_FILENAME, aligner.whole_genome_FM['sa'], fmt='%d')
+
+def test_align_known_read():
+
+    sa = np.loadtxt(GENOME_SA_FILENAME, dtype=int)
+    aligner = Aligner(genome, known_genes, genome_sa=sa)
+
+    print('data loaded')
+
+    max_align_time, avg_align_time = -float('inf'), 0
+
+
+def test_align_all_reads():
+
+    sa = np.loadtxt(GENOME_SA_FILENAME, dtype=int)
+    aligner = Aligner(genome, known_genes, genome_sa=sa)
+
+    print('data loaded')
+
+    max_align_time, avg_align_time = -float('inf'), 0
+
+    for read in reads:
+
+        start_align = time.time()
+
+        print(read, aligner.align(read))
+
+        end_align = time.time()
+
+        align_time = end_align - start_align
+
+        print(align_time)
+
+        max_align_time = max(max_align_time, align_time)
+        avg_align_time += align_time
+
+    avg_align_time /= len(reads)
+
+    print('align (max):', max_align_time)
+    print('align (avg):', avg_align_time)
+
+# test_init()
+test_align()

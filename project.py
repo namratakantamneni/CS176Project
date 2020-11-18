@@ -14,6 +14,7 @@
 import sys # DO NOT EDIT THIS
 from shared import *
 import numpy as np
+import pickle
 
 ALPHABET = [TERMINATOR] + BASES
 
@@ -229,7 +230,7 @@ MAX_INTRON_SIZE = 10000
 
 class Aligner:
 
-    def __init__(self, genome_sequence, known_genes):
+    def __init__(self, genome_sequence, known_genes, genome_sa=[]):
         """
         Initializes the aligner. Do all time intensive set up here. i.e. build suffix array.
 
@@ -242,15 +243,15 @@ class Aligner:
         """
 
         s = genome_sequence + '$'
-        sa = get_suffix_array(s)
+        sa = genome_sa if len(genome_sa) > 0 else get_suffix_array(s)
         L = get_bwt(s, sa)
         F = get_F(L)
         M = get_M(F)
         occ = get_occ(L)
 
-        self.genome = {'s': s, 'sa': sa, 'L': L, 'F': F, 'M': M, 'occ': occ} # no introns/exons
+        self.whole_genome_FM = {'s': s, 'sa': sa, 'L': L, 'F': F, 'M': M, 'occ': occ} # no introns/exons
 
-        self.genes = dict() # dict: {gene_id -> dict: {isoform_id -> dict: {'s': string, 'sa': array, 'L': string, 'F': string, 'M': dict, 'occ': dict}}}
+        self.known_isoforms_FM = dict() # dict: {gene_id -> dict: {isoform_id -> dict: {'s': string, 'sa': array, 'L': string, 'F': string, 'M': dict, 'occ': dict}}}
 
         for gene in known_genes:
 
@@ -273,7 +274,9 @@ class Aligner:
 
                 gene_data[isoform.id] = isoform_data
 
-            self.genes[gene.id] = gene_data
+            self.known_isoforms_FM[gene.id] = gene_data
+        
+        self.known_genes = known_genes
 
     def align(self, read_sequence):
         """
@@ -398,8 +401,9 @@ class Aligner:
 
         def diff_k(s_1, s_2, i_1, i_2, n, k):
             """
-            Returns the pairwise difference of the first n characters of s_1 and s_2 starting at indices i_1 and i_2, respectively,
-            up to a difference of k, and otherwise returns a number higher than k.
+            Returns the pairwise difference of the first n characters of s_1 and s_2 starting
+            at indices i_1 and i_2, respectively, up to a difference of k, and otherwise returns
+            a number higher than k.
             """
 
             diff = 0
@@ -435,7 +439,7 @@ class Aligner:
             # Priority 1
             hits = dict()
 
-            for gene in self.genes.items():
+            for gene in self.known_isoforms_FM.items():
 
                 gene_hits = dict()
                 
@@ -444,15 +448,20 @@ class Aligner:
                     iso_hits = dict()
 
                     sa_ranges = [bowtie_1(seed, iso[1]['M'], iso[1]['occ']) for seed in seeds]
-                    
+
                     # ex. sa_range: (((3, 4), 8), {10: 'C', 6: 'C'})
                     for i in range(len(sa_ranges)):
+                        
+                        if sa_ranges[i][0] == None:
+                            continue
 
                         sa_range_i, sa_range_j = sa_ranges[i][0][0][0], sa_ranges[i][0][0][1]
                         sa_range_len = sa_ranges[i][0][1]
 
-                        s_hits = [iso[1]['sa'][j] + sa_range_len - SEED_LEN - i * SEED_GAP for j in range(sa_range_i, sa_range_j)]
-                        s_hits = filter(s_hits, lambda x: x <= len(iso['s']) - len(p)) # ensure the whole length of hit is valid
+                        isoform_sa, offset = iso[1]['sa'], sa_range_len - SEED_LEN - i * SEED_GAP
+                        s_hits = [isoform_sa[j] + offset for j in range(sa_range_i, sa_range_j)]
+                        # ensure the whole length of hit is valid
+                        s_hits = filter(lambda x: x <= len(iso[1]['s']) - len(p), s_hits)
 
                         for hit in s_hits:
                             iso_hits[hit] = iso_hits[hit] + 1 if hit in iso_hits.keys() else 1
@@ -472,9 +481,14 @@ class Aligner:
 
                     for iso in gene[1].items():
 
+                        if not n in iso[1].keys():
+                            continue
+
+                        print(n)
+
                         for i in iso[1][n]:
 
-                            iso_s = self.genes[gene[0]][iso[0]]['s']
+                            iso_s = self.known_isoforms_FM[gene[0]][iso[0]]['s']
                             subs = diff_k(p, iso_s, 0, i, len(p), MAX_SUBS)
 
                             if subs < least_subs:
@@ -491,7 +505,6 @@ class Aligner:
             if best_align[0] != None:
                 return best_align
 
-                    
             # Priority 2
 
             return None # TODO
@@ -521,6 +534,9 @@ class Aligner:
              EDIT
 
           """
-          
+        
         alignment = bowtie_2(read_sequence)
+
+        if alignment == None:
+            return [] # TODO
         return genome_read(alignment) if alignment[0] != None else []
