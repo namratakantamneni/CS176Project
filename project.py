@@ -409,7 +409,7 @@ class Aligner:
             diff = 0
 
             for i in range(n):
-                if s_1[i_1+i] == s_2[i_2+i]:
+                if s_1[i_1+i] != s_2[i_2+i]:
                     diff += 1
                 if diff > k:
                     break
@@ -434,6 +434,8 @@ class Aligner:
             SEED_LEN = 16
             SEED_GAP = 10
 
+            MIN_HITS = 2 # assume at least MIN_HITS seeds will hit if there is a match
+
             seeds = [p[i:i+SEED_LEN] for i in range(0, len(p), SEED_GAP)]
 
             # Priority 1
@@ -443,11 +445,11 @@ class Aligner:
 
                 gene_hits = dict()
                 
-                for iso in gene[1].items():
+                for isoform in gene[1].items():
 
-                    iso_hits = dict()
+                    isoform_hit_ct = dict() # {index in isoform[1]['s']: number of hits}
 
-                    sa_ranges = [bowtie_1(seed, iso[1]['M'], iso[1]['occ']) for seed in seeds]
+                    sa_ranges = [bowtie_1(seed, isoform[1]['M'], isoform[1]['occ']) for seed in seeds]
 
                     # ex. sa_range: (((3, 4), 8), {10: 'C', 6: 'C'})
                     for i in range(len(sa_ranges)):
@@ -458,41 +460,46 @@ class Aligner:
                         sa_range_i, sa_range_j = sa_ranges[i][0][0][0], sa_ranges[i][0][0][1]
                         sa_range_len = sa_ranges[i][0][1]
 
-                        isoform_sa, offset = iso[1]['sa'], sa_range_len - SEED_LEN - i * SEED_GAP
+                        isoform_sa, offset = isoform[1]['sa'], sa_range_len - len(seeds[i]) - i * SEED_GAP
                         s_hits = [isoform_sa[j] + offset for j in range(sa_range_i, sa_range_j)]
+
                         # ensure the whole length of hit is valid
-                        s_hits = filter(lambda x: x <= len(iso[1]['s']) - len(p), s_hits)
+                        s_hits = filter(lambda x: x <= len(isoform[1]['s']) - len(p), s_hits)
 
                         for hit in s_hits:
-                            iso_hits[hit] = iso_hits[hit] + 1 if hit in iso_hits.keys() else 1
+                            if hit in isoform_hit_ct.keys():
+                                isoform_hit_ct[hit] += 1
+                            else:
+                                isoform_hit_ct[hit] = 1
+
+                    isoform_hits = {num_hits: [] for num_hits in range(MIN_HITS, len(seeds)+1)}
                         
-                    gene_hits[iso[0]] = {item[1]: item for item in iso_hits.items()}
+                    for hit in isoform_hit_ct.items():
+                        if hit[1] >= MIN_HITS:
+                            isoform_hits[hit[1]].append(hit[0])
+
+                    gene_hits[isoform[0]] = isoform_hits
                 
                 hits[gene[0]] = gene_hits
             
             best_align = (None, None, 0)
             least_subs = MAX_SUBS + 1
                     
-            for n in range(len(seeds) - 1, 1, -1): # check starting indices with 2 or more hits
+            for n in range(len(seeds), MIN_HITS-1, -1):
 
                 changed = False # can remove this condition to speed up (remove bottom layer)
 
                 for gene in hits.items():
 
-                    for iso in gene[1].items():
+                    for isoform in gene[1].items():
 
-                        if not n in iso[1].keys():
-                            continue
+                        for i in isoform[1][n]:
 
-                        print(n)
-
-                        for i in iso[1][n]:
-
-                            iso_s = self.known_isoforms_FM[gene[0]][iso[0]]['s']
+                            iso_s = self.known_isoforms_FM[gene[0]][isoform[0]]['s']
                             subs = diff_k(p, iso_s, 0, i, len(p), MAX_SUBS)
 
                             if subs < least_subs:
-                                best_align = (gene[0], iso[0], i)
+                                best_align = (gene[0], isoform[0], i)
                                 least_subs = subs
                                 changed = True
                             

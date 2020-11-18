@@ -69,8 +69,6 @@ def test_align_known_read():
     sa = np.loadtxt(GENOME_SA_FILENAME, dtype=int)
     aligner = Aligner(genome, known_genes, genome_sa=sa)
 
-    print('data loaded')
-
     start_align = time.time()
 
     start_index = 8250613 # Exon ENSE00001802701 (line 3 of genes.tab)
@@ -81,15 +79,10 @@ def test_align_known_read():
 
     print('align:', end_align - start_align)
 
-
-
-
 def test_align_all_reads():
 
     sa = np.loadtxt(GENOME_SA_FILENAME, dtype=int)
     aligner = Aligner(genome, known_genes, genome_sa=sa)
-
-    print('data loaded')
 
     max_align_time, avg_align_time = -float('inf'), 0
 
@@ -97,7 +90,7 @@ def test_align_all_reads():
 
         start_align = time.time()
 
-        print(read, aligner.align(read))
+        print(aligner.align(read))
 
         end_align = time.time()
 
@@ -114,4 +107,5 @@ def test_align_all_reads():
     print('align (avg):', avg_align_time)
 
 # test_init()
-test_align()
+# test_align_known_read()
+test_align_all_reads()
