@@ -52,8 +52,7 @@ def get_suffix_array(s):
             buckets = dict()
 
             for i in range(ranges[0][r], ranges[1][r]):
-		if i%100000==0:
-		    print(i)
+		
                 key = s[i+d:min(i+d+RADIX,len(s))]
 
                 if key in buckets.keys():
