@@ -415,7 +415,7 @@ class Aligner:
             
             return diff
 
-        def bowtie_2(p):
+        def align(p):
             """
             Returns an alignment of a query string p to the genome.
 
@@ -437,7 +437,11 @@ class Aligner:
 
             seeds = [p[i:i+SEED_LEN] for i in range(0, len(p), SEED_GAP)]
 
+            best_align = (None, None, 0)
+            least_subs = MAX_SUBS + 1
+
             # Priority 1
+
             hits = dict()
 
             for gene in self.known_isoforms_FM.items():
@@ -480,9 +484,6 @@ class Aligner:
                     gene_hits[isoform[0]] = isoform_hits
                 
                 hits[gene[0]] = gene_hits
-            
-            best_align = (None, None, 0)
-            least_subs = MAX_SUBS + 1
                     
             for n in range(len(seeds), MIN_HITS-1, -1):
 
@@ -513,24 +514,39 @@ class Aligner:
 
             # Priority 2
 
-            return None # TODO
+            genome_hit_ct = dict() # {index in self.whole_genome_FM['s']: number of hits}
 
-        # Priority 1: Align to known isoform with 6 or less mismatches
-        # 1. Splice query into 5 seeds of length 16
-        # 2. Find all the "transcriptomes" by splicing together the exons given by the Gene object
-        # 3. For each of the transcriptomes:
-        #     3.1. Call bowtie_1 on each of the seeds for the transcriptome
-        #     3.2. Goal 1: find 5 sequential seeds with offset 10
-        #     3.3. Goal 2: find 2/3/4 sequential seeds, then infer where the remaining seeds are
-        #     3.4. Check pairwise value of each of these seeds via direct character comparison and return best
-        #
-        # Priority 2: Align to unknown isoforms
-        # 1. Basically the same as the other one, but if there are 2/3/4 sequential seeds there may be introns in between.
-        # 2. Determine gap length and then use pairwise character comparison to determine where the "intron" should be.
+            genome_M, genome_occ = self.whole_genome_FM['M'], self.whole_genome_FM['occ']
+            genome_sa_ranges = [bowtie_1(seed, genome_M, genome_occ) for seed in seeds]
+
+            # IDEA: find 
+
+            # # ex. sa_range: (((3, 4), 8), {10: 'C', 6: 'C'})
+            # for i in range(len(sa_ranges)):
+                
+            #     if sa_ranges[i][0] == None:
+            #         continue
+
+            #     sa_range_i, sa_range_j = sa_ranges[i][0][0][0], sa_ranges[i][0][0][1]
+            #     sa_range_len = sa_ranges[i][0][1]
+
+            #     isoform_sa, offset = isoform[1]['sa'], sa_range_len - len(seeds[i]) - i * SEED_GAP
+            #     s_hits = [isoform_sa[j] + offset for j in range(sa_range_i, sa_range_j)]
+
+            #     # ensure the whole length of hit is valid
+            #     s_hits = filter(lambda x: x <= len(isoform[1]['s']) - len(p), s_hits)
+
+            #     for hit in s_hits:
+            #         if hit in isoform_hit_ct.keys():
+            #             isoform_hit_ct[hit] += 1
+            #         else:
+            #             isoform_hit_ct[hit] = 1
+
+            return None # TODO
 
         def genome_read(alignment):
           """
-          Converts an alignment to (start index, end index) tuples in the genome
+          Converts an alignment to a list of 1 or 2 (start index, end index) tuples in the genome
 
           Input: a tuple (gene_id, isoform_id, i)
               gene_id: id of the gene with best alignment to p
@@ -541,7 +557,7 @@ class Aligner:
 
           """
         
-        alignment = bowtie_2(read_sequence)
+        alignment = align(read_sequence)
 
         if alignment == None:
             return [] # TODO
