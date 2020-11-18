@@ -43,7 +43,6 @@ def get_suffix_array(s):
     ranges[0][0], ranges[1][0] = 0, len(s)
 
     for d in range(0, len(s), RADIX):
-	print(d)
         next_ranges = [np.empty(len(s), dtype='uint32'), np.empty(len(s), dtype='uint32'), 0] # next set of ranges
 
         for r in range(ranges[2]):
@@ -53,7 +52,8 @@ def get_suffix_array(s):
             buckets = dict()
 
             for i in range(ranges[0][r], ranges[1][r]):
-
+		if i%100000==0:
+		    print(i)
                 key = s[i+d:min(i+d+RADIX,len(s))]
 
                 if key in buckets.keys():
