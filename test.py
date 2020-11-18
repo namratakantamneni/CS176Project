@@ -71,7 +71,17 @@ def test_align_known_read():
 
     print('data loaded')
 
-    max_align_time, avg_align_time = -float('inf'), 0
+    start_align = time.time()
+
+    start_index = 8250613 # Exon ENSE00001802701 (line 3 of genes.tab)
+    read = genome[start_index:start_index+50]
+    print(aligner.align(read))
+
+    end_align = time.time()
+
+    print('align:', end_align - start_align)
+
+
 
 
 def test_align_all_reads():
