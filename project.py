@@ -32,57 +32,62 @@ def get_suffix_array(s):
     [8, 7, 5, 3, 1, 6, 4, 0, 2]
     """
 
+    RADIX = 50
+
     # sa: the suffix array.
     sa = np.arange(len(s), dtype='uint32')
-
-    # buckets: a dict storing the results for one layer of counting sort.
-    # format: {C: (indices where C is the next char, # of valid indices) ... }
-    buckets = {'$': [np.empty(1, dtype='uint32'), 0], 'A': [np.empty(len(s)-1, dtype='uint32'), 0], 'C': [np.empty(len(s)-1, dtype='uint32'), 0], \
-               'G': [np.empty(len(s)-1, dtype='uint32'), 0], 'T': [np.empty(len(s)-1, dtype='uint32'), 0]}
 
     # ranges: index ranges in 'sa' which are not fully sorted.
     # format: [start index (inclusive), end index (exclusive), # of valid ranges]
     ranges = [np.empty(len(s), dtype='uint32'), np.empty(len(s), dtype='uint32'), 1] 
     ranges[0][0], ranges[1][0] = 0, len(s)
 
-    for d in range(len(s)):
+    for d in range(0, len(s), RADIX):
+
+        print(d)
+
+        time0 = time.time()
 
         rs_ = [np.empty(len(s), dtype='uint32'), np.empty(len(s), dtype='uint32'), 0] # next set of ranges
 
-        sa_inc = sa + d
-
         for r in range(ranges[2]):
 
-            for c in ALPHABET:
-                buckets[c][1] = 0
-
-            time1, time2 = 0, 0
+            # buckets: a dict storing the results for one layer of counting sort.
+            # format: {C: (indices where C is the next char, # of valid indices) ... }
+            buckets = dict()
 
             for i in range(ranges[0][r], ranges[1][r]):
-                timea = time.time()
-                char = s[sa_inc[i]]
-                timeb = time.time()
-                b = buckets[char]
-                timec = time.time()
-                b[0][b[1]], b[1] = sa[i], b[1]+1
 
-                time1 += timeb - timea
-                time2 += timec - timeb
+                print(len(s))
 
-            print(d, time1, time2)
+                key = s[i+d:min(i+d+RADIX,len(s))]
+
+                if key in buckets.keys():
+                    indices = buckets[key]
+                    np.insert(indices, len(indices), [i])
+                else:
+                    buckets[key] = np.array([i])
+
+            print('time1', time.time() - time0)
+
+            bucket_order = np.sort(np.array(buckets.keys()))
+
+            print('time2', time.time() - time0)
             
             j = ranges[0][r]
             
-            for c in ALPHABET:
+            for key in bucket_order:
 
-                b = buckets[c]
-                sa[j:j+b[1]] = b[0][0:b[1]]
+                indices = buckets[key]
+                sa[j:j+len(indices)] = indices
 
-                if b[1] > 1:
-                    rs_[0][rs_[2]], rs_[1][rs_[2]] = j, j+b[1]
+                if len(indices) > 1:
+                    rs_[0][rs_[2]], rs_[1][rs_[2]] = j, j+len(indices)
                     rs_[2] += 1
                 
-                j += b[1]
+                j += len(indices)
+            
+            print('time3', time.time() - time0)
         
         ranges = rs_
     
