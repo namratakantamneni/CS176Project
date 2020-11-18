@@ -106,6 +106,11 @@ def test_align_all_reads():
     print('align (max):', max_align_time)
     print('align (avg):', avg_align_time)
 
+<<<<<<< HEAD
 # test_init()
 # test_align_known_read()
 test_align_all_reads()
+=======
+test_init()
+#test_align_known_read()
+>>>>>>> e0f2df11dcad59a63e3cdf270b14d219696bd63f
