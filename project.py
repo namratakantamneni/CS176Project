@@ -14,7 +14,6 @@
 import sys # DO NOT EDIT THIS
 from shared import *
 import numpy as np
-import time
 
 ALPHABET = [TERMINATOR] + BASES
 
@@ -44,11 +43,7 @@ def get_suffix_array(s):
 
     for d in range(0, len(s), RADIX):
 
-        print(d)
-
-        time0 = time.time()
-
-        rs_ = [np.empty(len(s), dtype='uint32'), np.empty(len(s), dtype='uint32'), 0] # next set of ranges
+        next_ranges = [np.empty(len(s), dtype='uint32'), np.empty(len(s), dtype='uint32'), 0] # next set of ranges
 
         for r in range(ranges[2]):
 
@@ -58,21 +53,14 @@ def get_suffix_array(s):
 
             for i in range(ranges[0][r], ranges[1][r]):
 
-                print(len(s))
-
                 key = s[i+d:min(i+d+RADIX,len(s))]
 
                 if key in buckets.keys():
-                    indices = buckets[key]
-                    np.insert(indices, len(indices), [i])
+                    buckets[key].append(i)
                 else:
-                    buckets[key] = np.array([i])
+                    buckets[key] = [i]
 
-            print('time1', time.time() - time0)
-
-            bucket_order = np.sort(np.array(buckets.keys()))
-
-            print('time2', time.time() - time0)
+            bucket_order = sorted(buckets.keys())
             
             j = ranges[0][r]
             
@@ -82,14 +70,12 @@ def get_suffix_array(s):
                 sa[j:j+len(indices)] = indices
 
                 if len(indices) > 1:
-                    rs_[0][rs_[2]], rs_[1][rs_[2]] = j, j+len(indices)
-                    rs_[2] += 1
+                    next_ranges[0][next_ranges[2]], next_ranges[1][next_ranges[2]] = j, j+len(indices)
+                    next_ranges[2] += 1
                 
                 j += len(indices)
-            
-            print('time3', time.time() - time0)
-        
-        ranges = rs_
+                    
+        ranges = next_ranges
     
     return list(sa)
 
@@ -285,9 +271,9 @@ class Aligner:
                 isoform_data['M']   = get_M(isoform_data['F'])
                 isoform_data['occ'] = get_occ(isoform_data['L'])
 
-                gene_data[isoform.isoform_id] = isoform_data
+                gene_data[isoform.id] = isoform_data
 
-            self.genes[gene.gene_id] = gene_data
+            self.genes[gene.id] = gene_data
 
     def align(self, read_sequence):
         """
