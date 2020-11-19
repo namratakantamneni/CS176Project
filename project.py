@@ -278,7 +278,7 @@ class Aligner:
 
                 for exon in isoform.exons:
                     isoform_data['s'] += genome_sequence[exon.start:exon.end]
-                    tup = (exon.start, exon.end)
+					tup = (exon.start:exon.end)
                     isoform_data['start_and_end_indices'].append(tup)
                 isoform_data['s'] += '$'
 
@@ -433,22 +433,48 @@ class Aligner:
 
         def genome_read(alignment):
             """
-            Converts an alignment to a list of 1 or 2 (start index, end index) tuples in the genome
 
             Input: a tuple (gene_id, isoform_id, i)
                 gene_id: id of the gene with best alignment to p
                 isoform_id: id of the isoform with best alignment to p
                 i: start index in the isoform
             Output:
-                EDIT
+                Alignment as a python list of k tuples of ((read start index), (genome start index), (length))
 
             """
             gene_id = alignment[0]
             isoform_id = alignment[1]
             start_index = [2]
+			
             gene_data = known_isoforms[gene_id]
             isoform = gene_data[isoform_id]
-            return isoform[start_and_end_indices]
+			exon_indices = isoform[start_and_end_indices] #this is the start and end indices of each exon in the genome
+			read_length = 50
+			
+			lst = []
+			
+			c = 0
+			while (exon_indices[c][0]-exon_indices[0][0])<start_index:
+				c = c+1
+			curr_exon = exon_indices[c-1]
+			
+			frst_tuple = (start_index, (curr_exon[0]+start_index), curr_exon[1]-(curr_exon[0]+start_index))
+			lst.append(frst_tuple)
+			read_length = 50-(curr_exon[1]-(curr_exon[0]+start_index))
+			c = c+1
+			curr_exon = exon_indices[c-1]
+			
+			while read_length > 0:
+				if curr_exon[1]-curr_exon[0]>read_length:
+					tup = (0,curr_exon[0],curr_exon[1]-curr_exon[0])
+					lst.append(tup)
+					read_length = read_length - (curr_exon[1]-curr_exon[0])
+					c = c+1
+					curr_exon = exon_indices[c-1]
+				else:
+					tup = 0,curr_exon[0],read_length
+					lst.append(tup)
+            return lst
             
         MAX_SUBS = 6
 
