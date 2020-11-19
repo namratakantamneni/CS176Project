@@ -37,23 +37,23 @@ def get_suffix_array(s):
     [8, 7, 5, 3, 1, 6, 4, 0, 2]
     """
 
-    RADIX = 30
+    RADIX = 50
 
     # sa: the suffix array.
     sa = np.arange(len(s))
-    sa_inc = sa
 
     # ranges: index ranges in 'sa' which are not fully sorted.
     # format: [start index (inclusive), end index (exclusive), # of valid ranges]
     ranges = [np.empty(len(s), dtype='int'), np.empty(len(s), dtype='int'), 1] 
     ranges[0][0], ranges[1][0] = 0, len(s)
 
-    time0, time1, time2 = 0, 0, 0
 
     for d in range(0, len(s), RADIX):
 
-        if d % 300000 == 0:
+        if d % 100000 == 0:
             print(d)
+
+        sa_inc = sa + d
 
         next_ranges = [np.empty(len(s), dtype='int'), np.empty(len(s), dtype='int'), 0] # next set of ranges
 
@@ -63,23 +63,17 @@ def get_suffix_array(s):
             # format: {C: (indices where C is the next char, # of valid indices) ... }
             buckets = dict()
 
-            timea = time.time()
-
             for sa_i in range(ranges[0][r], ranges[1][r]):
 
                 s_i = sa_inc[sa_i]
                 key = s[s_i:s_i+RADIX]
 
                 if key in buckets.keys():
-                    buckets[key].append(sa_i)
+                    buckets[key].append(sa[sa_i])
                 else:
-                    buckets[key] = [sa_i]
-
-            timeb = time.time()
-
+                    buckets[key] = [sa[sa_i]]
+            
             bucket_order = sorted(buckets.keys())
-
-            timec = time.time()
             
             j = ranges[0][r]
             
@@ -93,18 +87,8 @@ def get_suffix_array(s):
                     next_ranges[2] += 1
                 
                 j += len(indices)
-            
-            timed = time.time()
-
-            time0 += timeb - timea
-            time1 += timec - timeb
-            time2 += timed - timec
-
-        print(time0, time1, time2)
                     
         ranges = next_ranges
-
-        sa_inc += RADIX
     
     return sa.tolist()
 
@@ -120,6 +104,8 @@ def get_bwt(s, sa):
     bwt_arr = []
 
     for i in sa:
+        if abs(i) > len(s):
+            print(i, len(s))
         bwt_arr.append(s[i-1])
 
     return ''.join(bwt_arr)
@@ -404,7 +390,6 @@ class Aligner:
             """
             
             MAX_SUBS = 6        # We should do some thinking, this can probably be smaller.
-            MAX_BACKTRACKS = 50 # Testing necessary
 
             # Greedy implementation which runs for MAX_SUBS iterations, choosing the best substitution per iteration.
             best_align, subs = None, {}
@@ -546,16 +531,6 @@ class Aligner:
         genome_s, genome_sa = self.whole_genome_FM['s'], self.whole_genome_FM['sa']
         genome_M, genome_occ = self.whole_genome_FM['M'], self.whole_genome_FM['occ']
         genome_sa_ranges = [bowtie_1(seed, genome_M, genome_occ) for seed in seeds]
-        
-        for i in range(len(genome_sa)-1):
-
-            if genome_s[genome_sa[i]:] > genome_s[genome_sa[i+1]:]:
-                print('sa invalid', i)
-
-        print('sa checked')
-
-        for seed in seeds:
-            print(seed)
 
         for genome_sa_range in genome_sa_ranges:
             print(genome_sa_range, genome_s[genome_sa_range[0][0][0]:genome_sa_range[0][0][0]+SEED_LEN])
@@ -575,9 +550,9 @@ class Aligner:
             genome_sa_range_i, genome_sa_range_j = genome_sa_range[0]
             genome_sa_range_len = genome_sa_range[1]
 
-            offset = genome_sa_range_len - len(seeds[i]) - i * SEED_GAP if update_start \
-                else genome_sa_range_len + (len(seeds) - seed) * SEED_GAP - 1
+            offset = genome_sa_range_len - len(seeds[seed-1]) - (seed-1) * SEED_GAP + (0 if update_start else len(p) - 1)
             genome_s_hits = [genome_sa[i] + offset for i in range(genome_sa_range_i, genome_sa_range_j)]
+            print(genome_s_hits)
             genome_s_hits = filter(valid_genome_hit, genome_s_hits)
 
             hit_ct, increment = start_hit_ct if update_start else end_hit_ct, 1 if add else -1
@@ -595,12 +570,15 @@ class Aligner:
         for seed in range(1, len(seeds)+1):
             update_hits(seed, update_start=False, add=True)
 
+        for key in end_hit_ct.keys():
+            print(key, end_hit_ct[key])
+
         genome_end_hits = {num_hits: [] for num_hits in range(MIN_HITS, len(seeds)+1)}
 
         for end_hit in end_hit_ct.items():
             if end_hit[1] >= MIN_HITS:
                 genome_end_hits[end_hit[1]].append(end_hit[0])
-
+        
         for n in range(len(seeds), MIN_HITS-1):
 
             changed = False
@@ -616,20 +594,34 @@ class Aligner:
                     changed = True
                 
                 if subs == 0:
+                    print('aligned')
                     return best_align
 
-        # # One intron
+        # One intron
 
-        # for gap_seed in range(1, len(seeds)+1):
+        for gap_seed in range(1, len(seeds)+1):
 
-        #     if gap_seed == 1:
+            if gap_seed == 1:
 
-        #         for seed in range(2, len(seeds)+1):
-        #             update_hits(seed, update_start=False, add=False) # subtracting because we just added all seeds
+                for seed in range(2, len(seeds)+1):
+                    update_hits(seed, update_start=False, add=False) # subtracting because we just added all seeds
 
-        #     else:
+            else:
 
-        #         update_hits(gap_seed-1, update_start=True, add=True)
-        #         update_hits(gap_seed, update_start=False, add=False)
+                update_hits(gap_seed-1, update_start=True, add=True)
+                update_hits(gap_seed, update_start=False, add=False)
+
+            genome_start_hits = {num_hits: [] for num_hits in range(1, gap_seed)}
+            genome_end_hits = {num_hits: [] for num_hits in range(1, len(seeds)-gap_seed+1)}
+
+            for start_hit in start_hit_ct:
+                genome_end_hits[start_hit[1]].append(start_hit[0])
+            for end_hit in end_hit_ct.items():
+                genome_end_hits[end_hit[1]].append(end_hit[0])
+        
+            max_start_hits, max_end_hits = max(genome_start_hits.keys()), max(genome_end_hits.keys())
+            starts, ends = genome_start_hits[max_start_hits], genome_end_hits[max_end_hits]
+
+
 
         return best_align

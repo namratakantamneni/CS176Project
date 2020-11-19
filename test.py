@@ -50,7 +50,6 @@ for data in gene_data:
 genes_file.close()
 
 # Tests
-# Pickles used to store suffix arrays only
 
 GENOME_SA_FILENAME = 'genome_sa.txt'
 
@@ -78,7 +77,7 @@ def test_init(write=True):
     print('init:', end_init - start_init)
 
     if write:
-        np.savetxt(GENOME_SA_FILENAME, aligner.whole_genome_FM['sa'], fmt='%d')
+        np.savetxt('genome_sa_init.txt', aligner.whole_genome_FM['sa'], fmt='%d')
 
 def test_align_known_read(read=True):
 
@@ -101,26 +100,6 @@ def test_align_known_read(read=True):
 
     print('align:', end_align - start_align)
 
-<<<<<<< HEAD
-def test_align_unknown_read():
-
-    sa = np.loadtxt(GENOME_SA_FILENAME, dtype=int)
-    aligner = Aligner(genome, known_genes, genome_sa=sa)
-
-    start_align = time.time()
-
-    start_index = 6455453 # unknown exon (line 740 of genes.tab)
-    read = genome[start_index:start_index+50]
-    print(read)
-    print(aligner.align(read))
-
-    end_align = time.time()
-
-    print('align:', end_align - start_align)
-
-
-def test_align_all_reads():
-=======
 def test_align_unknown_read(read=True):
 
     if read:
@@ -131,7 +110,6 @@ def test_align_unknown_read(read=True):
         aligner = Aligner(genome, known_genes)
         end_init = time.time()
         print('init', end_init - start_init)
->>>>>>> tmp2
 
     start_align = time.time()
 
@@ -185,13 +163,17 @@ def test_align_all_reads(read=True):
     print('priority 1 matches: {0}/{1}'.format(priority_1_matches, len(reads)))
     print('priority 2 matches: {0}/{1}'.format(priority_2_matches, len(reads)))
 
-# test_init(write=False)
+test_init(write=True)
 # test_align_known_read(read=False)
-# test_align_unknown_read(read=False)
+# test_align_unknown_read(read=True)
 # test_align_all_reads(read=False)
-test_package()
+# test_package()
 
 # start_index = 6455453 # unknown exon (line 740 of genes.tab)
 # print(genome[start_index:start_index+50])
 # start_index = 4505547
 # print(genome[start_index:start_index+50])
+
+# test_string_1 = 'ACGTTAGCCAGT'*50+'$'
+# print(get_suffix_array(test_string_1))
+# print(get_suffix_array_package(test_string_1))
