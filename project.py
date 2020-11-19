@@ -14,9 +14,14 @@
 import sys # DO NOT EDIT THIS
 from shared import *
 import numpy as np
-import pickle
+import time
+import sufarray
 
 ALPHABET = [TERMINATOR] + BASES
+
+def get_suffix_array_package(s):
+    sa = sufarray.SufArray(s)
+    return sa.get_array()
 
 def get_suffix_array(s):
     """
@@ -32,18 +37,25 @@ def get_suffix_array(s):
     [8, 7, 5, 3, 1, 6, 4, 0, 2]
     """
 
-    RADIX = 50
+    RADIX = 30
 
     # sa: the suffix array.
-    sa = np.arange(len(s), dtype='uint32')
+    sa = np.arange(len(s))
+    sa_inc = sa
 
     # ranges: index ranges in 'sa' which are not fully sorted.
     # format: [start index (inclusive), end index (exclusive), # of valid ranges]
-    ranges = [np.empty(len(s), dtype='uint32'), np.empty(len(s), dtype='uint32'), 1] 
+    ranges = [np.empty(len(s), dtype='int'), np.empty(len(s), dtype='int'), 1] 
     ranges[0][0], ranges[1][0] = 0, len(s)
 
+    time0, time1, time2 = 0, 0, 0
+
     for d in range(0, len(s), RADIX):
-        next_ranges = [np.empty(len(s), dtype='uint32'), np.empty(len(s), dtype='uint32'), 0] # next set of ranges
+
+        if d % 300000 == 0:
+            print(d)
+
+        next_ranges = [np.empty(len(s), dtype='int'), np.empty(len(s), dtype='int'), 0] # next set of ranges
 
         for r in range(ranges[2]):
 
@@ -51,16 +63,23 @@ def get_suffix_array(s):
             # format: {C: (indices where C is the next char, # of valid indices) ... }
             buckets = dict()
 
-            for i in range(ranges[0][r], ranges[1][r]):
-		
-                key = s[i+d:min(i+d+RADIX,len(s))]
+            timea = time.time()
+
+            for sa_i in range(ranges[0][r], ranges[1][r]):
+
+                s_i = sa_inc[sa_i]
+                key = s[s_i:s_i+RADIX]
 
                 if key in buckets.keys():
-                    buckets[key].append(i)
+                    buckets[key].append(sa_i)
                 else:
-                    buckets[key] = [i]
+                    buckets[key] = [sa_i]
+
+            timeb = time.time()
 
             bucket_order = sorted(buckets.keys())
+
+            timec = time.time()
             
             j = ranges[0][r]
             
@@ -74,10 +93,20 @@ def get_suffix_array(s):
                     next_ranges[2] += 1
                 
                 j += len(indices)
+            
+            timed = time.time()
+
+            time0 += timeb - timea
+            time1 += timec - timeb
+            time2 += timed - timec
+
+        print(time0, time1, time2)
                     
         ranges = next_ranges
+
+        sa_inc += RADIX
     
-    return list(sa)
+    return sa.tolist()
 
 def get_bwt(s, sa):
     """
@@ -90,12 +119,10 @@ def get_bwt(s, sa):
     """
     bwt_arr = []
 
-    for elem in sa:  
-        bwt_arr.append(s[elem-1])
+    for i in sa:
+        bwt_arr.append(s[i-1])
 
-    bwt_str = ''.join(bwt_arr)
-
-    return bwt_str
+    return ''.join(bwt_arr)
 
 def get_F(L):
     """
@@ -417,139 +444,185 @@ class Aligner:
             
             return diff
 
-        def align(p):
+        def genome_read(alignment):
             """
-            Returns an alignment of a query string p to the genome.
+            Converts an alignment to a list of 1 or 2 (start index, end index) tuples in the genome
 
-            Input:
-                p: the pattern string
-
-            Output: a tuple (gene_id, isoform_id, index)
+            Input: a tuple (gene_id, isoform_id, i)
                 gene_id: id of the gene with best alignment to p
                 isoform_id: id of the isoform with best alignment to p
-                index: start index in the isoform
+                i: start index in the isoform
+            Output:
+                EDIT
+
             """
+            return alignment # fix
             
-            MAX_SUBS = 6
+        MAX_SUBS = 6
 
-            SEED_LEN = 16
-            SEED_GAP = 10
+        SEED_LEN = 16
+        SEED_GAP = 10
 
-            MIN_HITS = 2 # assume at least MIN_HITS seeds will hit if there is a match
+        MIN_HITS = 2 # assume at least MIN_HITS seeds will hit if there is a match
 
-            seeds = [p[i:i+SEED_LEN] for i in range(0, len(p), SEED_GAP)]
+        p = read_sequence
+        seeds = [p[i:i+SEED_LEN] for i in range(0, len(p), SEED_GAP)]
 
-            best_align = (None, None, 0)
-            least_subs = MAX_SUBS + 1
+        best_align = (None, None, 0)
+        least_subs = MAX_SUBS + 1
 
-            # Priority 1
+        # Priority 1
 
-            hits = dict()
+        hits = dict()
 
-            for gene in self.known_isoforms_FM.items():
+        for gene in self.known_isoforms_FM.items():
 
-                gene_hits = dict()
+            gene_hits = dict()
+            
+            for isoform in gene[1].items():
+
+                isoform_hit_ct = dict() # {index in isoform[1]['s']: number of hits}
+
+                sa_ranges = [bowtie_1(seed, isoform[1]['M'], isoform[1]['occ']) for seed in seeds]
+
+                # ex. sa_range: (((3, 4), 8), {10: 'C', 6: 'C'})
+                for i in range(len(sa_ranges)):
+                    
+                    if sa_ranges[i][0] == None:
+                        continue
+
+                    sa_range_i, sa_range_j = sa_ranges[i][0][0][0], sa_ranges[i][0][0][1]
+                    sa_range_len = sa_ranges[i][0][1]
+
+                    isoform_sa, offset = isoform[1]['sa'], sa_range_len - len(seeds[i]) - i * SEED_GAP
+                    s_hits = [isoform_sa[j] + offset for j in range(sa_range_i, sa_range_j)]
+
+                    # ensure the whole length of hit is valid
+                    s_hits = filter(lambda x: x <= len(isoform[1]['s']) - len(p), s_hits)
+
+                    for hit in s_hits:
+                        if hit in isoform_hit_ct.keys():
+                            isoform_hit_ct[hit] += 1
+                        else:
+                            isoform_hit_ct[hit] = 1
+
+                isoform_hits = {num_hits: [] for num_hits in range(MIN_HITS, len(seeds)+1)}
+                    
+                for hit in isoform_hit_ct.items():
+                    if hit[1] >= MIN_HITS:
+                        isoform_hits[hit[1]].append(hit[0])
+
+                gene_hits[isoform[0]] = isoform_hits
+            
+            hits[gene[0]] = gene_hits
                 
+        for n in range(len(seeds), MIN_HITS-1, -1):
+
+            changed = False # can remove this condition to speed up (remove bottom layer)
+
+            for gene in hits.items():
+
                 for isoform in gene[1].items():
 
-                    isoform_hit_ct = dict() # {index in isoform[1]['s']: number of hits}
+                    for i in isoform[1][n]:
 
-                    sa_ranges = [bowtie_1(seed, isoform[1]['M'], isoform[1]['occ']) for seed in seeds]
+                        iso_s = self.known_isoforms_FM[gene[0]][isoform[0]]['s']
+                        subs = diff_k(p, iso_s, 0, i, len(p), MAX_SUBS)
 
-                    # ex. sa_range: (((3, 4), 8), {10: 'C', 6: 'C'})
-                    for i in range(len(sa_ranges)):
+                        if subs < least_subs:
+                            best_align = (gene[0], isoform[0], i)
+                            least_subs = subs
+                            changed = True
                         
-                        if sa_ranges[i][0] == None:
-                            continue
+                        if subs == 0:
+                            return genome_read(best_align)
+            
+            if not changed and best_align[0] != None:
+                break
 
-                        sa_range_i, sa_range_j = sa_ranges[i][0][0][0], sa_ranges[i][0][0][1]
-                        sa_range_len = sa_ranges[i][0][1]
+        if best_align[0] != None:
+            return genome_read(best_align)
 
-                        isoform_sa, offset = isoform[1]['sa'], sa_range_len - len(seeds[i]) - i * SEED_GAP
-                        s_hits = [isoform_sa[j] + offset for j in range(sa_range_i, sa_range_j)]
+        # Priority 2
 
-                        # ensure the whole length of hit is valid
-                        s_hits = filter(lambda x: x <= len(isoform[1]['s']) - len(p), s_hits)
+        genome_s, genome_sa = self.whole_genome_FM['s'], self.whole_genome_FM['sa']
+        genome_M, genome_occ = self.whole_genome_FM['M'], self.whole_genome_FM['occ']
+        genome_sa_ranges = [bowtie_1(seed, genome_M, genome_occ) for seed in seeds]
+        
+        for i in range(len(genome_sa)-1):
 
-                        for hit in s_hits:
-                            if hit in isoform_hit_ct.keys():
-                                isoform_hit_ct[hit] += 1
-                            else:
-                                isoform_hit_ct[hit] = 1
+            if genome_s[genome_sa[i]:] > genome_s[genome_sa[i+1]:]:
+                print('sa invalid', i)
 
-                    isoform_hits = {num_hits: [] for num_hits in range(MIN_HITS, len(seeds)+1)}
-                        
-                    for hit in isoform_hit_ct.items():
-                        if hit[1] >= MIN_HITS:
-                            isoform_hits[hit[1]].append(hit[0])
+        print('sa checked')
 
-                    gene_hits[isoform[0]] = isoform_hits
+        for seed in seeds:
+            print(seed)
+
+        for genome_sa_range in genome_sa_ranges:
+            print(genome_sa_range, genome_s[genome_sa_range[0][0][0]:genome_sa_range[0][0][0]+SEED_LEN])
+
+        start_hit_ct, end_hit_ct = dict(), dict()
+        valid_genome_hit = lambda x: 0 <= x < len(genome_occ)
+
+        # start_hit: True updates start_hits, False updates end_hits
+        # add: True adds, False subtracts
+        def update_hits(seed, update_start, add):
+
+            genome_sa_range = genome_sa_ranges[seed-1][0]
+
+            if genome_sa_range == None:
+                return
+
+            genome_sa_range_i, genome_sa_range_j = genome_sa_range[0]
+            genome_sa_range_len = genome_sa_range[1]
+
+            offset = genome_sa_range_len - len(seeds[i]) - i * SEED_GAP if update_start \
+                else genome_sa_range_len + (len(seeds) - seed) * SEED_GAP - 1
+            genome_s_hits = [genome_sa[i] + offset for i in range(genome_sa_range_i, genome_sa_range_j)]
+            genome_s_hits = filter(valid_genome_hit, genome_s_hits)
+
+            hit_ct, increment = start_hit_ct if update_start else end_hit_ct, 1 if add else -1
+
+            for genome_s_hit in genome_s_hits:
+                if genome_s_hit in hit_ct.keys():
+                    hit_ct[genome_s_hit] += increment
+                else:
+                    hit_ct[genome_s_hit] = 1 # Assume add==True
+        
+        best_align = []
+
+        # No introns
+        
+        for seed in range(1, len(seeds)+1):
+            update_hits(seed, update_start=False, add=True)
+
+        genome_end_hits = {num_hits: [] for num_hits in range(MIN_HITS, len(seeds)+1)}
+
+        for end_hit in end_hit_ct.items():
+            if end_hit[1] >= MIN_HITS:
+                genome_end_hits[end_hit[1]].append(end_hit[0])
+
+        for n in range(len(seeds), MIN_HITS-1):
+
+            changed = False
+
+            for genome_end_hit in genome_end_hits[n]:
+
+                genome_hit = genome_end_hit - len(p) + 1
+                subs = diff_k(p, genome_s, 0, genome_hit, len(p), MAX_SUBS)
+
+                if subs < least_subs:
+                    best_align = [(0, genome_hit, len(p))]
+                    least_subs = subs
+                    changed = True
                 
-                hits[gene[0]] = gene_hits
-                    
-            for n in range(len(seeds), MIN_HITS-1, -1):
+                if subs == 0:
+                    return best_align
 
-                changed = False # can remove this condition to speed up (remove bottom layer)
+        # # One intron
 
-                for gene in hits.items():
-
-                    for isoform in gene[1].items():
-
-                        for i in isoform[1][n]:
-
-                            iso_s = self.known_isoforms_FM[gene[0]][isoform[0]]['s']
-                            subs = diff_k(p, iso_s, 0, i, len(p), MAX_SUBS)
-
-                            if subs < least_subs:
-                                best_align = (gene[0], isoform[0], i)
-                                least_subs = subs
-                                changed = True
-                            
-                            if subs == 0:
-                                break
-                
-                if not changed and best_align[0] != None:
-                    break
-
-            if best_align[0] != None:
-                return best_align
-
-            # Priority 2
-
-            genome_hit_ct = dict() # {index in self.whole_genome_FM['s']: number of hits}
-
-            genome_M, genome_occ = self.whole_genome_FM['M'], self.whole_genome_FM['occ']
-            genome_sa_ranges = [bowtie_1(seed, genome_M, genome_occ) for seed in seeds]
-
-            # IDEA: find 
-
-            # # ex. sa_range: (((3, 4), 8), {10: 'C', 6: 'C'})
-            # for i in range(len(sa_ranges)):
-                
-            #     if sa_ranges[i][0] == None:
-            #         continue
-
-            #     sa_range_i, sa_range_j = sa_ranges[i][0][0][0], sa_ranges[i][0][0][1]
-            #     sa_range_len = sa_ranges[i][0][1]
-
-            #     isoform_sa, offset = isoform[1]['sa'], sa_range_len - len(seeds[i]) - i * SEED_GAP
-            #     s_hits = [isoform_sa[j] + offset for j in range(sa_range_i, sa_range_j)]
-
-            #     # ensure the whole length of hit is valid
-            #     s_hits = filter(lambda x: x <= len(isoform[1]['s']) - len(p), s_hits)
-
-            #     for hit in s_hits:
-            #         if hit in isoform_hit_ct.keys():
-            #             isoform_hit_ct[hit] += 1
-            #         else:
-            #             isoform_hit_ct[hit] = 1
-
-            return None # TODO
-
-        def genome_read(alignment):
-          """
-          Converts an alignment to a list of 1 or 2 (start index, end index) tuples in the genome
-
+<<<<<<< HEAD
           Input: a tuple (gene_id, isoform_id, i)
               gene_id: id of the gene with best alignment to p
               isoform_id: id of the isoform with best alignment to p
@@ -566,7 +639,16 @@ class Aligner:
           return isoform[start_and_end_indices]
         
         alignment = align(read_sequence)
+        # for gap_seed in range(1, len(seeds)+1):
 
-        if alignment == None:
-            return [] # TODO
-        return genome_read(alignment) if alignment[0] != None else []
+        #     if gap_seed == 1:
+
+        #         for seed in range(2, len(seeds)+1):
+        #             update_hits(seed, update_start=False, add=False) # subtracting because we just added all seeds
+
+        #     else:
+
+        #         update_hits(gap_seed-1, update_start=True, add=True)
+        #         update_hits(gap_seed, update_start=False, add=False)
+
+        return best_align
