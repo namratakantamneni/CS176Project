@@ -163,9 +163,9 @@ def test_align_all_reads(read=True):
     print('priority 1 matches: {0}/{1}'.format(priority_1_matches, len(reads)))
     print('priority 2 matches: {0}/{1}'.format(priority_2_matches, len(reads)))
 
-test_init(write=True)
+# test_init(write=True)
 # test_align_known_read(read=False)
-# test_align_unknown_read(read=True)
+test_align_unknown_read(read=True)
 # test_align_all_reads(read=False)
 # test_package()
 
