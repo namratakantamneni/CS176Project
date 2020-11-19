@@ -272,10 +272,12 @@ class Aligner:
             for isoform in gene.isoforms:
 
                 isoform_data = dict()
-
+		isoform_data['start_and_end_indices'] = []
                 isoform_data['s'] = ''
                 for exon in isoform.exons:
                     isoform_data['s'] += genome_sequence[exon.start:exon.end]
+                    tup = (exon.start, exon.end)
+                    isoform_data['start_and_end_indices].append(tup)
                 isoform_data['s'] += '$'
 
                 isoform_data['sa']  = get_suffix_array(isoform_data['s'])
@@ -601,7 +603,28 @@ class Aligner:
 
         for gap_seed in range(1, len(seeds)+1):
 
+<<<<<<< HEAD
             if gap_seed == 1:
+=======
+<<<<<<< HEAD
+          Input: a tuple (gene_id, isoform_id, i)
+              gene_id: id of the gene with best alignment to p
+              isoform_id: id of the isoform with best alignment to p
+              i: start index in the isoform
+          Output:
+             1-2 tuples with start and end indices in the genome
+
+          """
+          gene_id = alignment[0]
+          isoform_id = alignment[1]
+          start_index = [2]
+          gene_data = known_isoforms[gene_id]
+          isoform = gene_data[isoform_id]
+          return isoform[start_and_end_indices]
+        
+        alignment = align(read_sequence)
+        # for gap_seed in range(1, len(seeds)+1):
+>>>>>>> 89a8bbeda4b319cfc203573648c4d57ae0d61273
 
                 for seed in range(2, len(seeds)+1):
                     update_hits(seed, update_start=False, add=False) # subtracting because we just added all seeds
