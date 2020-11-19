@@ -1,4 +1,6 @@
 from project import *
+from evaluation import *
+
 import time
 import re
 import pickle
@@ -52,7 +54,20 @@ genes_file.close()
 
 GENOME_SA_FILENAME = 'genome_sa.txt'
 
-def test_init():
+def test_package(write=True):
+
+    start_init = time.time()
+
+    result = get_suffix_array_package(genome + '$')
+
+    end_init = time.time()
+
+    print('init:', end_init - start_init)
+
+    if write:
+        np.savetxt(GENOME_SA_FILENAME, result, fmt='%d')
+
+def test_init(write=True):
 
     start_init = time.time()
 
@@ -62,12 +77,19 @@ def test_init():
 
     print('init:', end_init - start_init)
 
-    np.savetxt(GENOME_SA_FILENAME, aligner.whole_genome_FM['sa'], fmt='%d')
+    if write:
+        np.savetxt(GENOME_SA_FILENAME, aligner.whole_genome_FM['sa'], fmt='%d')
 
-def test_align_known_read():
+def test_align_known_read(read=True):
 
-    sa = np.loadtxt(GENOME_SA_FILENAME, dtype=int)
-    aligner = Aligner(genome, known_genes, genome_sa=sa)
+    if read:
+        sa = np.loadtxt(GENOME_SA_FILENAME, dtype=int)
+        aligner = Aligner(genome, known_genes, genome_sa=sa)
+    else:
+        start_init = time.time()
+        aligner = Aligner(genome, known_genes)
+        end_init = time.time()
+        print('init', end_init - start_init)
 
     start_align = time.time()
 
@@ -79,18 +101,52 @@ def test_align_known_read():
 
     print('align:', end_align - start_align)
 
-def test_align_all_reads():
+def test_align_unknown_read(read=True):
 
-    sa = np.loadtxt(GENOME_SA_FILENAME, dtype=int)
-    aligner = Aligner(genome, known_genes, genome_sa=sa)
+    if read:
+        sa = np.loadtxt(GENOME_SA_FILENAME, dtype=int)
+        aligner = Aligner(genome, known_genes, genome_sa=sa)
+    else:
+        start_init = time.time()
+        aligner = Aligner(genome, known_genes)
+        end_init = time.time()
+        print('init', end_init - start_init)
+
+    start_align = time.time()
+
+    start_index = 6455453 # unknown exon (line 740 of genes.tab)
+    read = genome[start_index:start_index+50]
+    print(read)
+    print(aligner.align(read))
+
+    end_align = time.time()
+
+    print('align:', end_align - start_align)
+
+
+def test_align_all_reads(read=True):
+
+    if read:
+        sa = np.loadtxt(GENOME_SA_FILENAME, dtype=int)
+        aligner = Aligner(genome, known_genes, genome_sa=sa)
+    else:
+        start_init = time.time()
+        aligner = Aligner(genome, known_genes)
+        end_init = time.time()
+        print('init', end_init - start_init)
 
     max_align_time, avg_align_time = -float('inf'), 0
+    priority_1_matches, priority_2_matches = 0, 0
 
     for read in reads:
 
         start_align = time.time()
 
-        print(aligner.align(read))
+        result = aligner.align(read)
+        print(result)
+        
+        if result == None:
+            priority_1_matches += 1
 
         end_align = time.time()
 
@@ -105,7 +161,16 @@ def test_align_all_reads():
 
     print('align (max):', max_align_time)
     print('align (avg):', avg_align_time)
+    print('priority 1 matches: {0}/{1}'.format(priority_1_matches, len(reads)))
+    print('priority 2 matches: {0}/{1}'.format(priority_2_matches, len(reads)))
 
-# test_init()
-# test_align_known_read()
-test_align_all_reads()
+# test_init(write=False)
+# test_align_known_read(read=False)
+# test_align_unknown_read(read=False)
+# test_align_all_reads(read=False)
+test_package()
+
+# start_index = 6455453 # unknown exon (line 740 of genes.tab)
+# print(genome[start_index:start_index+50])
+# start_index = 4505547
+# print(genome[start_index:start_index+50])
