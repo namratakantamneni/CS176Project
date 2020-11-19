@@ -258,6 +258,8 @@ class Aligner:
 
         self.whole_genome_FM = {'s': s, 'sa': sa, 'L': L, 'F': F, 'M': M, 'occ': occ} # no introns/exons
 
+        self.isoform_indices = dict()
+
         self.known_isoforms_FM = dict() # dict: {gene_id -> dict: {isoform_id -> dict: {'s': string, 'sa': array, 'L': string, 'F': string, 'M': dict, 'occ': dict}}}
 
         for gene in known_genes:
@@ -268,13 +270,13 @@ class Aligner:
 
                 isoform_data = dict()
 
-                isoform_data['start_and_end_indices'] = []
                 isoform_data['s'] = ''
+
+                self.isoform_indices[isoform.id] = []
 
                 for exon in isoform.exons:
                     isoform_data['s'] += genome_sequence[exon.start:exon.end]
-					tup = (exon.start:exon.end)
-                    isoform_data['start_and_end_indices'].append(tup)
+                    self.isoform_indices[isoform.id].append((exon.start, exon.end))
                 isoform_data['s'] += '$'
 
                 isoform_data['sa']  = get_suffix_array(isoform_data['s'])
@@ -426,51 +428,45 @@ class Aligner:
             
             return diff
 
-        def genome_read(alignment):
+        def genome_read(alignment, length):
             """
 
-            Input: a tuple (gene_id, isoform_id, i)
-                gene_id: id of the gene with best alignment to p
-                isoform_id: id of the isoform with best alignment to p
-                i: start index in the isoform
+            Input: 
+                alignment: a tuple (isoform_id, i)
+                    gene_id: id of the gene with best alignment to p
+                    isoform_id: id of the isoform with best alignment to p
+                    i: start index in the isoform
+                length: the length of the read
             Output:
                 Alignment as a python list of k tuples of ((read start index), (genome start index), (length))
 
             """
-            gene_id = alignment[0]
-            isoform_id = alignment[1]
-            start_index = [2]
-			
-            gene_data = known_isoforms[gene_id]
-            isoform = gene_data[isoform_id]
-			exon_indices = isoform[start_and_end_indices] #this is the start and end indices of each exon in the genome
-			read_length = 50
-			
-			lst = []
-			
-			c = 0
-			while (exon_indices[c][0]-exon_indices[0][0])<start_index:
-				c = c+1
-			curr_exon = exon_indices[c-1]
-			
-			frst_tuple = (start_index, (curr_exon[0]+start_index), curr_exon[1]-(curr_exon[0]+start_index))
-			lst.append(frst_tuple)
-			read_length = 50-(curr_exon[1]-(curr_exon[0]+start_index))
-			c = c+1
-			curr_exon = exon_indices[c-1]
-			
-			while read_length > 0:
-				if curr_exon[1]-curr_exon[0]>read_length:
-					tup = (0,curr_exon[0],curr_exon[1]-curr_exon[0])
-					lst.append(tup)
-					read_length = read_length - (curr_exon[1]-curr_exon[0])
-					c = c+1
-					curr_exon = exon_indices[c-1]
-				else:
-					tup = 0,curr_exon[0],read_length
-					lst.append(tup)
-            return lst
             
+            exon_index_pairs = self.isoform_indices[alignment[0]]
+            read_offset = alignment[1]
+
+            for exon_index_pair_i in range(len(exon_index_pairs)):
+
+                exon_index_pair = exon_index_pairs[exon_index_pair_i]
+                start_i, end_i = exon_index_pair
+                exon_length = end_i - start_i
+
+                if read_offset < exon_length - 1:
+
+                    read_start_index = start_i + read_offset
+                    length_in_exon = end_i - read_start_index
+
+                    result = [(0, read_start_index, min(length_in_exon, length))]
+
+                    if length_in_exon < length:
+                        result.append((length_in_exon, exon_index_pairs[exon_index_pair_i+1][0], length - length_in_exon))
+                    
+                    return result
+
+                else:
+
+                    read_offset -= exon_length
+
         MAX_SUBS = 6
 
         SEED_LEN = 16
@@ -478,229 +474,235 @@ class Aligner:
 
         MIN_HITS = 2 # assume at least MIN_HITS seeds will hit if there is a match
 
-        p = read_sequence
-        seeds = [p[i:i+SEED_LEN] for i in range(0, len(p), SEED_GAP)]
+        try:
 
-        best_align = (None, None, 0)
-        least_subs = MAX_SUBS + 1
+            p = read_sequence
+            seeds = [p[i:i+SEED_LEN] for i in range(0, len(p), SEED_GAP)]
 
-        # Priority 1
+            best_align = (None, 0)
+            least_subs = MAX_SUBS + 1
 
-        hits = dict()
+            # Priority 1
 
-        for gene in self.known_isoforms_FM.items():
+            hits = dict()
 
-            gene_hits = dict()
-            
-            for isoform in gene[1].items():
+            for gene in self.known_isoforms_FM.items():
 
-                isoform_hit_ct = dict() # {index in isoform[1]['s']: number of hits}
-
-                sa_ranges = [bowtie_1(seed, isoform[1]['M'], isoform[1]['occ']) for seed in seeds]
-
-                # ex. sa_range: (((3, 4), 8), {10: 'C', 6: 'C'})
-                for i in range(len(sa_ranges)):
-                    
-                    if sa_ranges[i][0] == None:
-                        continue
-
-                    sa_range_i, sa_range_j = sa_ranges[i][0][0][0], sa_ranges[i][0][0][1]
-                    sa_range_len = sa_ranges[i][0][1]
-
-                    isoform_sa, offset = isoform[1]['sa'], sa_range_len - len(seeds[i]) - i * SEED_GAP
-                    s_hits = [isoform_sa[j] + offset for j in range(sa_range_i, sa_range_j)]
-
-                    # ensure the whole length of hit is valid
-                    s_hits = filter(lambda x: x <= len(isoform[1]['s']) - len(p), s_hits)
-
-                    for hit in s_hits:
-                        if hit in isoform_hit_ct.keys():
-                            isoform_hit_ct[hit] += 1
-                        else:
-                            isoform_hit_ct[hit] = 1
-
-                isoform_hits = {num_hits: [] for num_hits in range(MIN_HITS, len(seeds)+1)}
-                    
-                for hit in isoform_hit_ct.items():
-                    if hit[1] >= MIN_HITS:
-                        isoform_hits[hit[1]].append(hit[0])
-
-                gene_hits[isoform[0]] = isoform_hits
-            
-            hits[gene[0]] = gene_hits
+                gene_hits = dict()
                 
-        for n in range(len(seeds), MIN_HITS-1, -1):
-
-            changed = False # can remove this condition to speed up (remove bottom layer)
-
-            for gene in hits.items():
-
                 for isoform in gene[1].items():
 
-                    for i in isoform[1][n]:
+                    isoform_hit_ct = dict() # {index in isoform[1]['s']: number of hits}
 
-                        iso_s = self.known_isoforms_FM[gene[0]][isoform[0]]['s']
-                        subs = diff_k(p, iso_s, 0, i, len(p), MAX_SUBS)
+                    sa_ranges = [bowtie_1(seed, isoform[1]['M'], isoform[1]['occ']) for seed in seeds]
 
-                        if subs < least_subs:
-                            best_align = (gene[0], isoform[0], i)
-                            least_subs = subs
-                            changed = True
+                    # ex. sa_range: (((3, 4), 8), {10: 'C', 6: 'C'})
+                    for i in range(len(sa_ranges)):
                         
-                        if subs == 0:
-                            return genome_read(best_align)
-            
-            if not changed and best_align[0] != None:
-                break
+                        if sa_ranges[i][0] == None:
+                            continue
 
-        if best_align[0] != None:
-            return genome_read(best_align)
+                        sa_range_i, sa_range_j = sa_ranges[i][0][0][0], sa_ranges[i][0][0][1]
+                        sa_range_len = sa_ranges[i][0][1]
 
-        # Priority 2
+                        isoform_sa, offset = isoform[1]['sa'], sa_range_len - len(seeds[i]) - i * SEED_GAP
+                        s_hits = [isoform_sa[j] + offset for j in range(sa_range_i, sa_range_j)]
 
-        genome_s, genome_sa = self.whole_genome_FM['s'], self.whole_genome_FM['sa']
-        genome_M, genome_occ = self.whole_genome_FM['M'], self.whole_genome_FM['occ']
-        genome_sa_ranges = [bowtie_1(seed, genome_M, genome_occ) for seed in seeds]
+                        # ensure the whole length of hit is valid
+                        s_hits = filter(lambda x: x <= len(isoform[1]['s']) - len(p), s_hits)
 
-        start_hit_ct, end_hit_ct = dict(), dict()
-        valid_genome_hit = lambda x: 0 <= x < len(genome_s)
+                        for hit in s_hits:
+                            if hit in isoform_hit_ct.keys():
+                                isoform_hit_ct[hit] += 1
+                            else:
+                                isoform_hit_ct[hit] = 1
 
-        # start_hit: True updates start_hits, False updates end_hits
-        # add: True adds, False subtracts
-        def update_hits(seed, update_start, add):
+                    isoform_hits = {num_hits: [] for num_hits in range(MIN_HITS, len(seeds)+1)}
+                        
+                    for hit in isoform_hit_ct.items():
+                        if hit[1] >= MIN_HITS:
+                            isoform_hits[hit[1]].append(hit[0])
 
-            genome_sa_range = genome_sa_ranges[seed-1][0]
-
-            if genome_sa_range == None:
-                return
-
-            genome_sa_range_i, genome_sa_range_j = genome_sa_range[0]
-            genome_sa_range_len = genome_sa_range[1]
-
-            offset = genome_sa_range_len - len(seeds[seed-1]) - (seed-1) * SEED_GAP + (0 if update_start else len(p) - 1)
-            genome_s_hits = [genome_sa[i] + offset for i in range(genome_sa_range_i, genome_sa_range_j)]
-            genome_s_hits = filter(valid_genome_hit, genome_s_hits)
-
-
-            hit_ct, increment = start_hit_ct if update_start else end_hit_ct, 1 if add else -1
-
-            for genome_s_hit in genome_s_hits:
-                if genome_s_hit in hit_ct.keys():
-                    hit_ct[genome_s_hit] += increment
-                else:
-                    hit_ct[genome_s_hit] = 1 # Assume add==True
-        
-        best_align = []
-
-        # Mo introns, or introns in first or last seed
-        
-        for seed in range(1, len(seeds)+1):
-            update_hits(seed, update_start=False, add=True)
-
-        genome_end_hits = {num_hits: [] for num_hits in range(MIN_HITS, len(seeds)+1)}
-
-        for end_hit in end_hit_ct.items():
-            if end_hit[1] >= MIN_HITS:
-                genome_end_hits[end_hit[1]].append(end_hit[0])
-        
-        for n in range(len(seeds), MIN_HITS-1, -1):
-
-            changed = False
-
-            for genome_end_hit in genome_end_hits[n]:
-
-                genome_hit = genome_end_hit - len(p) + 1
+                    gene_hits[isoform[0]] = isoform_hits
                 
-                subs = diff_k(p, genome_s, 0, genome_hit, len(p), MAX_SUBS)
+                hits[gene[0]] = gene_hits
+                    
+            for n in range(len(seeds), MIN_HITS-1, -1):
 
-                if subs < least_subs:
-                    best_align = [(0, genome_hit, len(p))]
-                    least_subs = subs
-                    changed = True
+                changed = False # can remove this condition to speed up (remove bottom layer)
+
+                for gene in hits.items():
+
+                    for isoform in gene[1].items():
+
+                        for i in isoform[1][n]:
+
+                            iso_s = self.known_isoforms_FM[gene[0]][isoform[0]]['s']
+                            subs = diff_k(p, iso_s, 0, i, len(p), MAX_SUBS)
+
+                            if subs < least_subs:
+                                best_align = (isoform[0], i)
+                                least_subs = subs
+                                changed = True
+                            
+                            if subs == 0:
+                                return genome_read(best_align, len(p))
                 
-                if subs == 0:
-                    return best_align
+                if not changed and best_align[0] != None:
+                    break
 
-                # implement if gap of 2
+            if best_align[0] != None:
+                return genome_read(best_align, len(p))
 
-        # One intron
+            # Priority 2
 
-        # for gap_seed in range(1, len(seeds)+1):
+            genome_s, genome_sa = self.whole_genome_FM['s'], self.whole_genome_FM['sa']
+            genome_M, genome_occ = self.whole_genome_FM['M'], self.whole_genome_FM['occ']
+            genome_sa_ranges = [bowtie_1(seed, genome_M, genome_occ) for seed in seeds]
 
-        #     if gap_seed == 1:
+            start_hit_ct, end_hit_ct = dict(), dict()
+            valid_genome_hit = lambda x: 0 <= x < len(genome_s)
 
-        #         for seed in range(2, len(seeds)+1):
-        #             update_hits(seed, update_start=False, add=False) # subtracting because we just added all seeds
+            # start_hit: True updates start_hits, False updates end_hits
+            # add: True adds, False subtracts
+            def update_hits(seed, update_start, add):
 
-        #     else:
+                genome_sa_range = genome_sa_ranges[seed-1][0]
 
-        #         update_hits(gap_seed-1, update_start=True, add=True)
-        #         update_hits(gap_seed, update_start=False, add=False)
+                if genome_sa_range == None:
+                    return
 
-        #     genome_start_hits = {num_hits: [] for num_hits in range(1, gap_seed)}
-        #     genome_end_hits = {num_hits: [] for num_hits in range(1, len(seeds)-gap_seed+1)}
+                genome_sa_range_i, genome_sa_range_j = genome_sa_range[0]
+                genome_sa_range_len = genome_sa_range[1]
 
-        #     for start_hit in start_hit_ct:
-        #         if start_hit[1] > 0:
-        #             genome_end_hits[start_hit[1]].append(start_hit[0])
-        #     for end_hit in end_hit_ct.items():
-        #         if end_hit[1] > 0:
-        #             genome_end_hits[end_hit[1]].append(end_hit[0])
+                offset = genome_sa_range_len - len(seeds[seed-1]) - (seed-1) * SEED_GAP + (0 if update_start else len(p) - 1)
+                genome_s_hits = [genome_sa[i] + offset for i in range(genome_sa_range_i, genome_sa_range_j)]
+                genome_s_hits = filter(valid_genome_hit, genome_s_hits)
+
+
+                hit_ct, increment = start_hit_ct if update_start else end_hit_ct, 1 if add else -1
+
+                for genome_s_hit in genome_s_hits:
+                    if genome_s_hit in hit_ct.keys():
+                        hit_ct[genome_s_hit] += increment
+                    else:
+                        hit_ct[genome_s_hit] = 1 # Assume add==True
             
-        #     if len(genome_start_hits.keys()) == 0 or len(genome_end_hits.keys()) == 0:
-        #         continue
+            best_align = []
+
+            # Mo introns, or introns in first or last seed
+            
+            for seed in range(1, len(seeds)+1):
+                update_hits(seed, update_start=False, add=True)
+
+            genome_end_hits = {num_hits: [] for num_hits in range(MIN_HITS, len(seeds)+1)}
+
+            for end_hit in end_hit_ct.items():
+                if end_hit[1] >= MIN_HITS:
+                    genome_end_hits[end_hit[1]].append(end_hit[0])
+            
+            for n in range(len(seeds), MIN_HITS-1, -1):
+
+                changed = False
+
+                for genome_end_hit in genome_end_hits[n]:
+
+                    genome_hit = genome_end_hit - len(p) + 1
+                    
+                    subs = diff_k(p, genome_s, 0, genome_hit, len(p), MAX_SUBS)
+
+                    if subs < least_subs:
+                        best_align = [(0, genome_hit, len(p))]
+                        least_subs = subs
+                        changed = True
+                    
+                    if subs == 0:
+                        return best_align
+
+                    # implement if gap of 2
+
+            # One intron
+
+            # for gap_seed in range(1, len(seeds)+1):
+
+            #     if gap_seed == 1:
+
+            #         for seed in range(2, len(seeds)+1):
+            #             update_hits(seed, update_start=False, add=False) # subtracting because we just added all seeds
+
+            #     else:
+
+            #         update_hits(gap_seed-1, update_start=True, add=True)
+            #         update_hits(gap_seed, update_start=False, add=False)
+
+            #     genome_start_hits = {num_hits: [] for num_hits in range(1, gap_seed)}
+            #     genome_end_hits = {num_hits: [] for num_hits in range(1, len(seeds)-gap_seed+1)}
+
+            #     for start_hit in start_hit_ct:
+            #         if start_hit[1] > 0:
+            #             genome_end_hits[start_hit[1]].append(start_hit[0])
+            #     for end_hit in end_hit_ct.items():
+            #         if end_hit[1] > 0:
+            #             genome_end_hits[end_hit[1]].append(end_hit[0])
+                
+            #     if len(genome_start_hits.keys()) == 0 or len(genome_end_hits.keys()) == 0:
+            #         continue
+            
+            #     max_start_hits, max_end_hits = max(genome_start_hits.keys()), max(genome_end_hits.keys())
+            #     starts, ends = genome_start_hits[max_start_hits], genome_end_hits[max_end_hits]
+
+            #     start_scores = [np.zeros(len(p), dtype='int') for start in starts]
+            #     end_scores = [np.zeros(len(p), dtype='int') for end in ends]
+                
+            #     for start_i in range(len(starts)):
+
+            #         mismatches = 0
+
+            #         for j in range(len(p)):
+
+            #             mismatches += 0 if genome_s[start_i+j] == p[j] else 1
+            #             start_scores[start_i][j] = mismatches
+                
+            #     for end_i in range(len(starts)):
+
+            #         mismatches = 0
+
+            #         for j in range(len(p)):
+
+            #             mismatches += 0 if genome_s[end_i-j] == p[-j] else 1
+            #             end_scores[end_i][-j] = mismatches
+                
+            #     for exon_i in range(len(p)-1):
+
+            #         best_start, best_end = (MAX_SUBS+1, 0), (MAX_SUBS+1, 0)
+
+            #         for start_i in range(len(starts)):
+
+            #             score = start_scores[start_i][exon_i]
+            #             if score < best_start[0]:
+            #                 best_start = (score, start_i)
+                    
+            #         for end_i in range(len(ends)):
+
+            #             score = end_scores[end_i][exon_i+1]
+            #             if score < best_end[0]:
+            #                 best_end = (score, end_i)
+
+            #         print(best_start, best_end)
+                    
+            #         alignment_score = best_start[0] + best_end[0]
+
+            #         if alignment_score < least_subs and \
+            #             MIN_INTRON_SIZE <= ends[end_i]-starts[start_i]+len(p)-1 <= MAX_INTRON_SIZE:
+
+            #             least_subs = alignment_score
+            #             best_align = [(0, starts[start_i], exon_i+1), (exon_i+1, ends[end_i]-len(p)+1+exon_i, len(p)-exon_i-1)]
+
+            #             if alignment_score == 0:
+            #                 return best_align
+
+            return best_align
         
-        #     max_start_hits, max_end_hits = max(genome_start_hits.keys()), max(genome_end_hits.keys())
-        #     starts, ends = genome_start_hits[max_start_hits], genome_end_hits[max_end_hits]
+        except:
 
-        #     start_scores = [np.zeros(len(p), dtype='int') for start in starts]
-        #     end_scores = [np.zeros(len(p), dtype='int') for end in ends]
-            
-        #     for start_i in range(len(starts)):
-
-        #         mismatches = 0
-
-        #         for j in range(len(p)):
-
-        #             mismatches += 0 if genome_s[start_i+j] == p[j] else 1
-        #             start_scores[start_i][j] = mismatches
-            
-        #     for end_i in range(len(starts)):
-
-        #         mismatches = 0
-
-        #         for j in range(len(p)):
-
-        #             mismatches += 0 if genome_s[end_i-j] == p[-j] else 1
-        #             end_scores[end_i][-j] = mismatches
-            
-        #     for exon_i in range(len(p)-1):
-
-        #         best_start, best_end = (MAX_SUBS+1, 0), (MAX_SUBS+1, 0)
-
-        #         for start_i in range(len(starts)):
-
-        #             score = start_scores[start_i][exon_i]
-        #             if score < best_start[0]:
-        #                 best_start = (score, start_i)
-                
-        #         for end_i in range(len(ends)):
-
-        #             score = end_scores[end_i][exon_i+1]
-        #             if score < best_end[0]:
-        #                 best_end = (score, end_i)
-
-        #         print(best_start, best_end)
-                
-        #         alignment_score = best_start[0] + best_end[0]
-
-        #         if alignment_score < least_subs and \
-        #             MIN_INTRON_SIZE <= ends[end_i]-starts[start_i]+len(p)-1 <= MAX_INTRON_SIZE:
-
-        #             least_subs = alignment_score
-        #             best_align = [(0, starts[start_i], exon_i+1), (exon_i+1, ends[end_i]-len(p)+1+exon_i, len(p)-exon_i-1)]
-
-        #             if alignment_score == 0:
-        #                 return best_align
-
-        return best_align
+            return []

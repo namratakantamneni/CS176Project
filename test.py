@@ -53,6 +53,23 @@ genes_file.close()
 
 GENOME_SA_FILENAME = 'genome_sa.txt'
 
+def diff_k(s_1, s_2, i_1, i_2, n, k):
+    """
+    Returns the pairwise difference of the first n characters of s_1 and s_2 starting
+    at indices i_1 and i_2, respectively, up to a difference of k, and otherwise returns
+    a number higher than k.
+    """
+
+    diff = 0
+
+    for i in range(n):
+        if s_1[i_1+i] != s_2[i_2+i]:
+            diff += 1
+        if diff > k:
+            break
+    
+    return diff
+
 def test_package(write=True):
 
     start_init = time.time()
@@ -173,9 +190,14 @@ def test_align_all_reads(read=True):
 
         end_align = time.time()
 
+        difference = 0
+        for res in result:
+            difference += diff_k(read, genome, res[0], res[1], res[2], 6)
+        print(difference)
+
         align_time = end_align - start_align
 
-        print(align_time)
+        # print(align_time)
 
         max_align_time = max(max_align_time, align_time)
         avg_align_time += align_time
@@ -190,9 +212,9 @@ def test_align_all_reads(read=True):
 # test_init(write=True)
 # test_align_known_read(read=False)
 # test_align_unknown_read(read=True)
-# test_align_all_reads(read=True)
+test_align_all_reads(read=True)
 # test_package()
-test_align_split_read()
+# test_align_split_read()
 
 # start_index = 6455453 # unknown exon (line 740 of genes.tab)
 # print(genome[start_index:start_index+50])
