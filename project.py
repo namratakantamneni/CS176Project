@@ -50,9 +50,6 @@ def get_suffix_array(s):
 
     for d in range(0, len(s), RADIX):
 
-        if d % 100000 == 0:
-            print(d)
-
         sa_inc = sa + d
 
         next_ranges = [np.empty(len(s), dtype='int'), np.empty(len(s), dtype='int'), 0] # next set of ranges
@@ -104,8 +101,6 @@ def get_bwt(s, sa):
     bwt_arr = []
 
     for i in sa:
-        if abs(i) > len(s):
-            print(i, len(s))
         bwt_arr.append(s[i-1])
 
     return ''.join(bwt_arr)
@@ -541,11 +536,8 @@ class Aligner:
         genome_M, genome_occ = self.whole_genome_FM['M'], self.whole_genome_FM['occ']
         genome_sa_ranges = [bowtie_1(seed, genome_M, genome_occ) for seed in seeds]
 
-        for genome_sa_range in genome_sa_ranges:
-            print(genome_sa_range, genome_s[genome_sa_range[0][0][0]:genome_sa_range[0][0][0]+SEED_LEN])
-
         start_hit_ct, end_hit_ct = dict(), dict()
-        valid_genome_hit = lambda x: 0 <= x < len(genome_occ)
+        valid_genome_hit = lambda x: 0 <= x < len(genome_s)
 
         # start_hit: True updates start_hits, False updates end_hits
         # add: True adds, False subtracts
@@ -561,10 +553,8 @@ class Aligner:
 
             offset = genome_sa_range_len - len(seeds[seed-1]) - (seed-1) * SEED_GAP + (0 if update_start else len(p) - 1)
             genome_s_hits = [genome_sa[i] + offset for i in range(genome_sa_range_i, genome_sa_range_j)]
-            print(genome_s_hits)
             genome_s_hits = filter(valid_genome_hit, genome_s_hits)
 
-            print(update_start)
 
             hit_ct, increment = start_hit_ct if update_start else end_hit_ct, 1 if add else -1
 
@@ -576,13 +566,10 @@ class Aligner:
         
         best_align = []
 
-        # No introns
+        # Mo introns, or introns in first or last seed
         
         for seed in range(1, len(seeds)+1):
             update_hits(seed, update_start=False, add=True)
-
-        for key in end_hit_ct.keys():
-            print(key, end_hit_ct[key])
 
         genome_end_hits = {num_hits: [] for num_hits in range(MIN_HITS, len(seeds)+1)}
 
@@ -590,13 +577,14 @@ class Aligner:
             if end_hit[1] >= MIN_HITS:
                 genome_end_hits[end_hit[1]].append(end_hit[0])
         
-        for n in range(len(seeds), MIN_HITS-1):
+        for n in range(len(seeds), MIN_HITS-1, -1):
 
             changed = False
 
             for genome_end_hit in genome_end_hits[n]:
 
                 genome_hit = genome_end_hit - len(p) + 1
+                
                 subs = diff_k(p, genome_s, 0, genome_hit, len(p), MAX_SUBS)
 
                 if subs < least_subs:
@@ -605,8 +593,9 @@ class Aligner:
                     changed = True
                 
                 if subs == 0:
-                    print('aligned')
                     return best_align
+
+                # implement if gap of 2
 
         # One intron
 
@@ -626,11 +615,66 @@ class Aligner:
         #     genome_end_hits = {num_hits: [] for num_hits in range(1, len(seeds)-gap_seed+1)}
 
         #     for start_hit in start_hit_ct:
-        #         genome_end_hits[start_hit[1]].append(start_hit[0])
+        #         if start_hit[1] > 0:
+        #             genome_end_hits[start_hit[1]].append(start_hit[0])
         #     for end_hit in end_hit_ct.items():
-        #         genome_end_hits[end_hit[1]].append(end_hit[0])
+        #         if end_hit[1] > 0:
+        #             genome_end_hits[end_hit[1]].append(end_hit[0])
+            
+        #     if len(genome_start_hits.keys()) == 0 or len(genome_end_hits.keys()) == 0:
+        #         continue
         
         #     max_start_hits, max_end_hits = max(genome_start_hits.keys()), max(genome_end_hits.keys())
         #     starts, ends = genome_start_hits[max_start_hits], genome_end_hits[max_end_hits]
+
+        #     start_scores = [np.zeros(len(p), dtype='int') for start in starts]
+        #     end_scores = [np.zeros(len(p), dtype='int') for end in ends]
+            
+        #     for start_i in range(len(starts)):
+
+        #         mismatches = 0
+
+        #         for j in range(len(p)):
+
+        #             mismatches += 0 if genome_s[start_i+j] == p[j] else 1
+        #             start_scores[start_i][j] = mismatches
+            
+        #     for end_i in range(len(starts)):
+
+        #         mismatches = 0
+
+        #         for j in range(len(p)):
+
+        #             mismatches += 0 if genome_s[end_i-j] == p[-j] else 1
+        #             end_scores[end_i][-j] = mismatches
+            
+        #     for exon_i in range(len(p)-1):
+
+        #         best_start, best_end = (MAX_SUBS+1, 0), (MAX_SUBS+1, 0)
+
+        #         for start_i in range(len(starts)):
+
+        #             score = start_scores[start_i][exon_i]
+        #             if score < best_start[0]:
+        #                 best_start = (score, start_i)
+                
+        #         for end_i in range(len(ends)):
+
+        #             score = end_scores[end_i][exon_i+1]
+        #             if score < best_end[0]:
+        #                 best_end = (score, end_i)
+
+        #         print(best_start, best_end)
+                
+        #         alignment_score = best_start[0] + best_end[0]
+
+        #         if alignment_score < least_subs and \
+        #             MIN_INTRON_SIZE <= ends[end_i]-starts[start_i]+len(p)-1 <= MAX_INTRON_SIZE:
+
+        #             least_subs = alignment_score
+        #             best_align = [(0, starts[start_i], exon_i+1), (exon_i+1, ends[end_i]-len(p)+1+exon_i, len(p)-exon_i-1)]
+
+        #             if alignment_score == 0:
+        #                 return best_align
 
         return best_align

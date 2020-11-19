@@ -122,6 +122,28 @@ def test_align_unknown_read(read=True):
 
     print('align:', end_align - start_align)
 
+def test_align_split_read(read=True):
+
+    if read:
+        sa = np.loadtxt(GENOME_SA_FILENAME, dtype=int)
+        aligner = Aligner(genome, known_genes, genome_sa=sa)
+    else:
+        start_init = time.time()
+        aligner = Aligner(genome, known_genes)
+        end_init = time.time()
+        print('init', end_init - start_init)
+
+    start_align = time.time()
+
+    start_index = 6455453 # unknown exon (line 740 of genes.tab)
+    offset = 2345
+    read = genome[start_index:start_index+25] + genome[start_index+offset:start_index+offset+25]
+    print(read)
+    print(aligner.align(read))
+
+    end_align = time.time()
+
+    print('align:', end_align - start_align)
 
 def test_align_all_reads(read=True):
 
@@ -146,6 +168,8 @@ def test_align_all_reads(read=True):
         
         if result == None:
             priority_1_matches += 1
+        elif len(result) > 0:
+            priority_2_matches += 1
 
         end_align = time.time()
 
@@ -165,9 +189,10 @@ def test_align_all_reads(read=True):
 
 # test_init(write=True)
 # test_align_known_read(read=False)
-test_align_unknown_read(read=True)
-# test_align_all_reads(read=False)
+# test_align_unknown_read(read=True)
+# test_align_all_reads(read=True)
 # test_package()
+test_align_split_read()
 
 # start_index = 6455453 # unknown exon (line 740 of genes.tab)
 # print(genome[start_index:start_index+50])
