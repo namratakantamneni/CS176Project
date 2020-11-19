@@ -259,10 +259,12 @@ class Aligner:
             for isoform in gene.isoforms:
 
                 isoform_data = dict()
-
+		isoform_data['start_and_end_indices'] = []
                 isoform_data['s'] = ''
                 for exon in isoform.exons:
                     isoform_data['s'] += genome_sequence[exon.start:exon.end]
+                    tup = (exon.start, exon.end)
+                    isoform_data['start_and_end_indices].append(tup)
                 isoform_data['s'] += '$'
 
                 isoform_data['sa']  = get_suffix_array(isoform_data['s'])
@@ -553,9 +555,15 @@ class Aligner:
               isoform_id: id of the isoform with best alignment to p
               i: start index in the isoform
           Output:
-             EDIT
+             1-2 tuples with start and end indices in the genome
 
           """
+          gene_id = alignment[0]
+          isoform_id = alignment[1]
+          start_index = [2]
+          gene_data = known_isoforms[gene_id]
+          isoform = gene_data[isoform_id]
+          return isoform[start_and_end_indices]
         
         alignment = align(read_sequence)
 
