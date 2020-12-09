@@ -14,8 +14,10 @@
 import sys # DO NOT EDIT THIS
 from shared import *
 import numpy as np
+
 import time
 import sufarray
+import functools
 
 ALPHABET = [TERMINATOR] + BASES
 
@@ -37,57 +39,77 @@ def get_suffix_array(s):
     [8, 7, 5, 3, 1, 6, 4, 0, 2]
     """
 
-    RADIX = 50
+    scores = {ALPHABET[i]: i for i in range(len(ALPHABET))}
+    n = len(s)
 
-    # sa: the suffix array.
-    sa = np.arange(len(s))
-
-    # ranges: index ranges in 'sa' which are not fully sorted.
-    # format: [start index (inclusive), end index (exclusive), # of valid ranges]
-    ranges = [np.empty(len(s), dtype='int'), np.empty(len(s), dtype='int'), 1] 
-    ranges[0][0], ranges[1][0] = 0, len(s)
-
-
-    for d in range(0, len(s), RADIX):
-
-        sa_inc = sa + d
-
-        next_ranges = [np.empty(len(s), dtype='int'), np.empty(len(s), dtype='int'), 0] # next set of ranges
-
-        for r in range(ranges[2]):
-
-            # buckets: a dict storing the results for one layer of counting sort.
-            # format: {C: (indices where C is the next char, # of valid indices) ... }
-            buckets = dict()
-
-            for sa_i in range(ranges[0][r], ranges[1][r]):
-
-                s_i = sa_inc[sa_i]
-                key = s[s_i:s_i+RADIX]
-
-                if key in buckets.keys():
-                    buckets[key].append(sa[sa_i])
-                else:
-                    buckets[key] = [sa[sa_i]]
-            
-            bucket_order = sorted(buckets.keys())
-            
-            j = ranges[0][r]
-            
-            for key in bucket_order:
-
-                indices = buckets[key]
-                sa[j:j+len(indices)] = indices
-
-                if len(indices) > 1:
-                    next_ranges[0][next_ranges[2]], next_ranges[1][next_ranges[2]] = j, j+len(indices)
-                    next_ranges[2] += 1
-                
-                j += len(indices)
-                    
-        ranges = next_ranges
+    class Suffix:
+        def __init__(self, i):
+            self.index     = i
+            self.rank      = scores[s[i  ]]
+            self.next_rank = scores[s[i+1]] if i < len(s)-1 else 0
     
-    return sa.tolist()
+    def suffix_cmp(suf1, suf2):
+        if suf1.rank == suf2.rank:
+            if suf1.next_rank == suf2.next_rank:
+                return 0
+            return -1 if suf1.next_rank < suf2.next_rank else 1
+        else:
+            return -1 if suf1.rank < suf2.rank else 1
+    
+    suffix_key = functools.cmp_to_key(suffix_cmp)
+    suffixes = sorted([Suffix(i) for i in range(n)], key=suffix_key)
+
+    def suffix_sort(): # not in use
+        max_rank = suffixes[-1].rank
+        ranks = dict()
+        for suffix in suffixes:
+            r = suffix.next_rank
+            if r in ranks:
+                ranks[r].append(suffix)
+            else:
+                ranks[r] = [suffix]
+        result = [e for r in range(max_rank+1) if r in ranks.keys() \
+                for e in ranks[r]]
+        ranks = dict()
+        for suffix in result:
+            r = suffix.rank
+            if r in ranks:
+                ranks[r].append(suffix)
+            else:
+                ranks[r] = [suffix]
+        result = [e for r in range(max_rank+1) if r in ranks.keys() \
+                for e in ranks[r]]
+        return result
+
+    ind = [0] * n
+
+    k = 4
+    while k < 2*n:
+
+        rank = 0
+        prev_rank = suffixes[0].rank
+        suffixes[0].rank = rank
+        ind[suffixes[0].index] = 0
+
+        for i in range(1, n):
+            if suffixes[i].rank == prev_rank and \
+                    suffixes[i].next_rank == suffixes[i-1].next_rank:
+                suffixes[i].rank = rank
+            else:
+                prev_rank = suffixes[i].rank
+                rank += 1
+                suffixes[i].rank = rank
+            ind[suffixes[i].index] = i
+        
+        for i in range(n):
+            next_index = suffixes[i].index + k//2
+            suffixes[i].next_rank = suffixes[ind[next_index]].rank if \
+                    next_index < n else 0
+
+        suffixes.sort(key=suffix_key)
+        k *= 2
+
+    return [suffix.index for suffix in suffixes]
 
 def get_bwt(s, sa):
     """
