@@ -212,7 +212,7 @@ def test_align_all_reads(read=True):
 # test_init(write=True)
 # test_align_known_read(read=False)
 # test_align_unknown_read(read=True)
-test_align_all_reads(read=True)
+test_align_all_reads(read=False)
 # test_package()
 # test_align_split_read()
 
