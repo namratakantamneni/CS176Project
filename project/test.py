@@ -212,7 +212,7 @@ def test_align_all_reads(read=True):
 # test_init(write=True)
 # test_align_known_read(read=False)
 # test_align_unknown_read(read=True)
-test_align_all_reads(read=False)
+# test_align_all_reads(read=False)
 # test_package()
 # test_align_split_read()
 
@@ -221,12 +221,12 @@ test_align_all_reads(read=False)
 # start_index = 4505547
 # print(genome[start_index:start_index+50])
 
-# test_string_1 = 'ACGTTAGCCAGT'*140000 +'$'
-# # test_string_1 = genome + '$'
-# a = time.time()
-# sa_test_1a = get_suffix_array(test_string_1)
-# b = time.time()
-# sa_test_1b = get_suffix_array_package(test_string_1)
-# c = time.time()
-# print(all([sa_test_1a[i] == sa_test_1b[i] for i in range(len(test_string_1))]))
-# print(b-a, c-b)
+test_string_1 = 'ACGTTAGCCAGT'*14000 +'$'
+# test_string_1 = genome + '$'
+a = time.time()
+sa_test_1a = get_suffix_array(test_string_1)
+b = time.time()
+sa_test_1b = get_suffix_array_package(test_string_1)
+c = time.time()
+print(all([sa_test_1a[i] == sa_test_1b[i] for i in range(len(test_string_1))]))
+print(b-a, c-b)

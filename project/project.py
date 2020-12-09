@@ -16,14 +16,14 @@ from shared import *
 import numpy as np
 
 import time
-# import sufarray
+import sufarray
 import functools
 
 ALPHABET = [TERMINATOR] + BASES
 
-# def get_suffix_array_package(s):
-#     sa = sufarray.SufArray(s)
-#     return sa.get_array()
+def get_suffix_array_package(s):
+    sa = sufarray.SufArray(s)
+    return sa.get_array()
 
 def get_suffix_array(s):
     """
@@ -42,74 +42,71 @@ def get_suffix_array(s):
     scores = {ALPHABET[i]: i for i in range(len(ALPHABET))}
     n = len(s)
 
-    class Suffix:
-        def __init__(self, i):
-            self.index     = i
-            self.rank      = scores[s[i  ]]
-            self.next_rank = scores[s[i+1]] if i < len(s)-1 else 0
-    
-    def suffix_cmp(suf1, suf2):
-        if suf1.rank == suf2.rank:
-            if suf1.next_rank == suf2.next_rank:
-                return 0
-            return -1 if suf1.next_rank < suf2.next_rank else 1
-        else:
-            return -1 if suf1.rank < suf2.rank else 1
-    
-    suffix_key = functools.cmp_to_key(suffix_cmp)
-    suffixes = sorted([Suffix(i) for i in range(n)], key=suffix_key)
+    # def suffix_cmp(suf1, suf2):
+    #     if suf1[1] == suf2[1]:
+    #         if suf1[2] == suf2[2]:
+    #             return 0
+    #         return -1 if suf1[2] < suf2[2] else 1
+    #     else:
+    #         return -1 if suf1[1] < suf2[1] else 1
 
-    def suffix_sort(): # not in use
-        max_rank = suffixes[-1].rank
-        ranks = dict()
-        for suffix in suffixes:
-            r = suffix.next_rank
-            if r in ranks:
-                ranks[r].append(suffix)
-            else:
-                ranks[r] = [suffix]
-        result = [e for r in range(max_rank+1) if r in ranks.keys() \
-                for e in ranks[r]]
-        ranks = dict()
-        for suffix in result:
-            r = suffix.rank
-            if r in ranks:
-                ranks[r].append(suffix)
-            else:
-                ranks[r] = [suffix]
-        result = [e for r in range(max_rank+1) if r in ranks.keys() \
-                for e in ranks[r]]
-        return result
+    # suffix_key = functools.cmp_to_key(suffix_cmp)
+    suffix_init = lambda i: np.array([i, scores[s[i]], scores[s[i+1]] if i<n-1 else 0])
+    suffixes = np.array([suffix_init(i) for i in range(n)])
+    suffixes = suffixes[np.argsort(suffixes[:,1] * n + suffixes[:,2])]
 
-    ind = [0] * n
+    # def suffix_sort(): # not in use  
+    #     max_rank = suffixes[-1].rank
+    #     ranks = dict()
+    #     for suffix in suffixes:
+    #         r = suffix.next_rank
+    #         if r in ranks:
+    #             ranks[r].append(suffix)
+    #         else:
+    #             ranks[r] = [suffix]
+    #     result = [e for r in range(max_rank+1) if r in ranks.keys() \
+    #             for e in ranks[r]]
+    #     ranks = dict()
+    #     for suffix in result:
+    #         r = suffix.rank
+    #         if r in ranks:
+    #             ranks[r].append(suffix)
+    #         else:
+    #             ranks[r] = [suffix]
+    #     result = [e for r in range(max_rank+1) if r in ranks.keys() \
+    #             for e in ranks[r]]
+    #     return result
+
+    ind = np.zeros(n, dtype=np.int32)
 
     k = 4
     while k < 2*n:
 
         rank = 0
-        prev_rank = suffixes[0].rank
-        suffixes[0].rank = rank
-        ind[suffixes[0].index] = 0
+        prev_rank = suffixes[0][1]
+        suffixes[0][1] = rank
+        ind[suffixes[0][0]] = 0
 
         for i in range(1, n):
-            if suffixes[i].rank == prev_rank and \
-                    suffixes[i].next_rank == suffixes[i-1].next_rank:
-                suffixes[i].rank = rank
+            suffix, prev_suffix = suffixes[i], suffixes[i-1]
+            if suffix[1] == prev_rank and \
+                    suffix[2] == prev_suffix[2]:
+                suffix[1] = rank
             else:
-                prev_rank = suffixes[i].rank
+                prev_rank = suffix[1]
                 rank += 1
-                suffixes[i].rank = rank
-            ind[suffixes[i].index] = i
+                suffix[1] = rank
+            ind[suffix[0]] = i
         
         for i in range(n):
-            next_index = suffixes[i].index + k//2
-            suffixes[i].next_rank = suffixes[ind[next_index]].rank if \
-                    next_index < n else 0
+            suffix = suffixes[i]
+            next_index = suffix[0] + k//2
+            suffix[2] = suffixes[ind[next_index]][1] if next_index < n else 0
 
-        suffixes.sort(key=suffix_key)
+        suffixes = suffixes[np.argsort(suffixes[:,1] * n + suffixes[:,2])]
         k *= 2
 
-    return [suffix.index for suffix in suffixes]
+    return [suffix[0] for suffix in suffixes]
 
 def get_bwt(s, sa):
     """
