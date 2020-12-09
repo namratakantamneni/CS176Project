@@ -16,14 +16,14 @@ from shared import *
 import numpy as np
 
 import time
-import sufarray
+# import sufarray
 import functools
 
 ALPHABET = [TERMINATOR] + BASES
 
-def get_suffix_array_package(s):
-    sa = sufarray.SufArray(s)
-    return sa.get_array()
+# def get_suffix_array_package(s):
+#     sa = sufarray.SufArray(s)
+#     return sa.get_array()
 
 def get_suffix_array(s):
     """
